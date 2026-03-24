@@ -259,6 +259,9 @@ export class RendererManager {
 
   /**
    * Cleanup event listeners and dispose renderers before re-initialization.
+   * The main renderer is kept alive because `init()` reuses it via
+   * `getMainRenderer()`. Only the overlay renderer (and any other
+   * secondary renderers) are disposed.
    */
   public cleanup() {
     if (this.resizeHandler) {
@@ -267,9 +270,17 @@ export class RendererManager {
     }
 
     for (const renderer of this.renderers) {
-      renderer.domElement.remove();
-      renderer.dispose();
+      if (renderer === this.mainRenderer) {
+        // Remove from DOM but keep the renderer alive for reuse in init()
+        renderer.domElement.remove();
+      } else {
+        renderer.domElement.remove();
+        renderer.dispose();
+      }
     }
-    this.renderers = [];
+
+    // Reset the list to only contain the main renderer
+    this.renderers = [this.mainRenderer];
+    this.overlayRenderer = null;
   }
 }

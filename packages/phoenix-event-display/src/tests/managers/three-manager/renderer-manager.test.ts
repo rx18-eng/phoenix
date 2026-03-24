@@ -95,21 +95,36 @@ describe('RendererManager', () => {
   });
 
   describe('cleanup', () => {
-    it('should dispose all renderers and remove their DOM elements', () => {
+    it('should dispose secondary renderers but keep main renderer alive', () => {
       const mainRenderer = rendererManager.getMainRenderer();
       const otherRenderer = new WebGLRenderer();
       rendererManager.addRenderer(otherRenderer);
 
-      const removeSpy1 = jest.spyOn(mainRenderer.domElement, 'remove');
-      const removeSpy2 = jest.spyOn(otherRenderer.domElement, 'remove');
+      const mainRemoveSpy = jest.spyOn(mainRenderer.domElement, 'remove');
+      const otherRemoveSpy = jest.spyOn(otherRenderer.domElement, 'remove');
 
       rendererManager.cleanup();
 
-      expect(mainRenderer.dispose).toHaveBeenCalled();
+      // Main renderer is NOT disposed (reused by init()), but its DOM element is removed
+      expect(mainRenderer.dispose).not.toHaveBeenCalled();
+      expect(mainRemoveSpy).toHaveBeenCalled();
+
+      // Secondary renderers ARE disposed and removed from DOM
       expect(otherRenderer.dispose).toHaveBeenCalled();
-      expect(removeSpy1).toHaveBeenCalled();
-      expect(removeSpy2).toHaveBeenCalled();
-      expect(rendererManager.getRenderers()).toEqual([]);
+      expect(otherRemoveSpy).toHaveBeenCalled();
+
+      // Renderers list retains only the main renderer
+      expect(rendererManager.getRenderers()).toEqual([mainRenderer]);
+    });
+
+    it('should clear the overlay renderer reference', () => {
+      const overlayCanvas = document.createElement('canvas');
+      rendererManager.setOverlayRenderer(overlayCanvas);
+      expect(rendererManager.getOverlayRenderer()).toBeTruthy();
+
+      rendererManager.cleanup();
+
+      expect(rendererManager.getOverlayRenderer()).toBeFalsy();
     });
 
     it('should remove the resize event listener', () => {
