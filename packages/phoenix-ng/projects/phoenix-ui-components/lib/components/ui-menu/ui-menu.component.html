@@ -72,6 +72,9 @@
   <!-- Toggle for shareable link constructor modal-->
   <app-share-link *ngIf="uiConfig.showShareLink"></app-share-link>
 
+  <!-- Kinematics panel -->
+  <app-kinematics-panel [config]="kinematicsConfig"></app-kinematics-panel>
+
   <!-- Extra options -->
   <ng-content></ng-content>
 </app-ui-menu-wrapper>
