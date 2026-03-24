@@ -1413,17 +1413,19 @@ export class ThreeManager {
   }
 
   /** Saves a blob */
-  saveBlob = (function () {
+  private saveBlob(blob: Blob | MediaSource, fileName: string) {
     const a = document.createElement('a');
-    document.body.appendChild(a);
     a.style.display = 'none';
-    return function saveData(blob: Blob | MediaSource, fileName: string) {
-      const url = window.URL.createObjectURL(blob);
-      a.href = url;
-      a.download = fileName;
-      a.click();
-    };
-  })();
+    document.body.appendChild(a);
+    const url = window.URL.createObjectURL(blob);
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    }, 100);
+  }
 
   /**
    * crops the size of an image to fit the ratio of the given screen size
@@ -1627,10 +1629,7 @@ export class ThreeManager {
 
     output.toBlob((blob) => {
       if (!blob) return;
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'screencapture.png';
-      a.click();
+      this.saveBlob(blob, 'screencapture.png');
     });
   }
 

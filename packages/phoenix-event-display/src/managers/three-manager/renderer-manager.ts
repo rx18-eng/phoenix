@@ -258,12 +258,18 @@ export class RendererManager {
   }
 
   /**
-   * Cleanup event listeners before re-initialization.
+   * Cleanup event listeners and dispose renderers before re-initialization.
    */
   public cleanup() {
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
     }
+
+    for (const renderer of this.renderers) {
+      renderer.domElement.remove();
+      renderer.dispose();
+    }
+    this.renderers = [];
   }
 }
