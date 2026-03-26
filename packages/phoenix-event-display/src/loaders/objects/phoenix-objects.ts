@@ -24,6 +24,8 @@ import {
   CanvasTexture,
   ShaderMaterial,
   DoubleSide,
+  InstancedMesh,
+  Matrix4,
 } from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
 import { EVENT_DATA_TYPE_COLORS } from '../../helpers/constants';
@@ -771,6 +773,102 @@ export class PhoenixObjects {
     caloCellParams.uuid = cube.uuid;
 
     return cube;
+  }
+
+  /**
+   * Create all CaloCells as a single InstancedMesh for performance.
+   * Receives the entire collection array and returns one object with
+   * per-instance transforms and colors, reducing 187K draw calls to 1.
+   * @param cellsParams Array of all cell parameters in the collection.
+   * @returns InstancedMesh containing all cells.
+   */
+  public static getCaloCellsInstanced(cellsParams: any[]): Object3D {
+    const defaultRadius = 1700;
+    const defaultZ = 2000;
+    const defaultSide = 30;
+    const defaultLength = 30;
+
+    const count = cellsParams.length;
+    const unitBox = new BoxGeometry(1, 1, 1);
+    const material = new MeshPhongMaterial({
+      color: cellsParams[0]?.color ?? EVENT_DATA_TYPE_COLORS.CaloClusters,
+      transparent: true,
+      opacity: 0.7,
+    });
+
+    const mesh = new InstancedMesh(unitBox, material, count);
+
+    // Reusable temporaries to avoid per-iteration allocation
+    const tempMatrix = new Matrix4();
+    const tempPosition = new Vector3();
+    const tempScale = new Vector3();
+    const tempColor = new Color();
+    const tempObj = new Object3D();
+
+    for (let i = 0; i < count; i++) {
+      const cell = cellsParams[i];
+
+      // Position (reuse existing helper)
+      const position = PhoenixObjects.getCaloPosition(
+        cell,
+        defaultRadius,
+        defaultZ,
+      );
+
+      // Cell dimensions — scale encodes variable width/length
+      const cellWidth = cell.side ?? defaultSide;
+      let cellLength = cell.length ?? defaultLength;
+      if (cellLength < cellWidth) {
+        cellLength = cellWidth;
+      }
+
+      // Orientation via lookAt (same 3-branch logic as getCaloCell)
+      tempObj.position.copy(position);
+      tempObj.rotation.set(0, 0, 0);
+      tempObj.updateMatrix();
+      if (!cell.radius && !cell.z) {
+        tempObj.lookAt(0, 0, 0);
+      } else if (cell.z && !cell.radius) {
+        tempObj.lookAt(position.x, position.y, 0);
+      }
+      if (cell.radius) {
+        tempObj.lookAt(0, 0, position.z);
+      }
+
+      // Compose transform: position + orientation + scale
+      tempScale.set(cellWidth, cellWidth, cellLength);
+      tempMatrix.compose(position, tempObj.quaternion, tempScale);
+      mesh.setMatrixAt(i, tempMatrix);
+
+      // Per-instance color
+      tempColor.set(cell.color ?? EVENT_DATA_TYPE_COLORS.CaloClusters);
+      mesh.setColorAt(i, tempColor);
+
+      // Write back identifiers for filtering and collection lookups
+      cell._instanceId = i;
+      cell.uuid = mesh.uuid;
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true;
+    }
+
+    // Compute bounding sphere across all instances for correct frustum culling.
+    // Without this, Three.js uses the unit-box bounding sphere and cells
+    // disappear when panning.
+    mesh.computeBoundingSphere();
+
+    mesh.name = 'CaloCell';
+    mesh.userData = {
+      _isInstancedCaloCells: true,
+      _instanceData: cellsParams,
+      _originalMatrices: null, // lazily populated on first filter
+      _scaleValue: 1, // current scale factor (for filter↔scale coordination)
+      _scaleAxis: null as string | null,
+    };
+
+    return mesh;
   }
 
   /**
