@@ -167,9 +167,9 @@ export class RendererManager {
 
   /**
    * Remove a renderer from the available renderers list.
-   * @param renderer Three,js WebGLRenderer to be removed.
+   * @param renderer Three.js WebGLRenderer to be removed.
    */
-  public removeControls(renderer: WebGLRenderer) {
+  public removeRenderer(renderer: WebGLRenderer) {
     const index: number = this.renderers.indexOf(renderer);
     if (index > -1) {
       this.renderers.splice(index, 1);
