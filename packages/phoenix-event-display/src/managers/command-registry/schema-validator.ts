@@ -28,7 +28,7 @@ export function validateArgs(
 
   if (schema.additionalProperties === false) {
     for (const key of Object.keys(obj)) {
-      if (!(key in props)) {
+      if (!Object.prototype.hasOwnProperty.call(props, key)) {
         return { valid: false, error: `unknown parameter '${key}'` };
       }
     }

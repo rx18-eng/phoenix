@@ -41,4 +41,9 @@ describe('validateArgs', () => {
   it('rejects non-object args', () => {
     expect(validateArgs(schema, 'nope' as unknown).valid).toBe(false);
   });
+  it('rejects an inherited-name key (e.g. __proto__) as unknown', () => {
+    // JSON.parse yields a real own "__proto__" property, as AI/URL input would.
+    const args = JSON.parse('{"dark":true,"__proto__":1}');
+    expect(validateArgs(schema, args).valid).toBe(false);
+  });
 });
