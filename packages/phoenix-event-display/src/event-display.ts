@@ -25,6 +25,11 @@ import {
   SessionManager,
   type SessionManagerHost,
 } from './managers/session-manager';
+import {
+  CommandRegistry,
+  registerDefaultCommands,
+  type CommandHost,
+} from './managers/command-registry';
 
 declare global {
   /**
@@ -59,6 +64,8 @@ export class EventDisplay {
     new Set();
   /** Session recorder/player coordinator for #883 (lazy initialized). */
   private sessionManager: SessionManager | null = null;
+  /** Command registry (#942), lazily initialized. */
+  private commandRegistry: CommandRegistry | null = null;
   /** Stored keydown handler for session recording shortcut. */
   private sessionRecordKeydownHandler: ((e: KeyboardEvent) => void) | null =
     null;
@@ -286,6 +293,42 @@ export class EventDisplay {
         controls.target.set(target[0], target[1], target[2]);
         controls.update();
       },
+    };
+  }
+
+  /**
+   * Get the CommandRegistry (#942): named, schema-described actions over the
+   * Phoenix API. Lazily instantiated and populated with the default set.
+   * @returns The CommandRegistry singleton for this EventDisplay.
+   */
+  public getCommandRegistry(): CommandRegistry {
+    if (!this.commandRegistry) {
+      this.commandRegistry = new CommandRegistry(this.buildCommandHost());
+      registerDefaultCommands(this.commandRegistry);
+    }
+    return this.commandRegistry;
+  }
+
+  /**
+   * Build the host adapter that bridges command handlers to the live
+   * EventDisplay (managers, bus, object resolution).
+   * @returns The command host adapter.
+   */
+  private buildCommandHost(): CommandHost {
+    return {
+      eventDisplay: this,
+      ui: this.getUIManager(),
+      three: this.getThreeManager(),
+      state: this.getStateManager(),
+      emit: (name, data) => this.emit(name, data),
+      resolveObject: (collection, index) => {
+        const objects = this.getCollection(collection);
+        const object = objects?.[index];
+        return object?.uuid ? { uuid: object.uuid } : undefined;
+      },
+      // Phase 1 returns an empty list; the command palette (a later phase)
+      // supplies real part names from the live phoenix-menu geometry tree.
+      listGeometryParts: () => [],
     };
   }
 
