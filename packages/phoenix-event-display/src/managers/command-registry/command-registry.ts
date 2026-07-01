@@ -15,10 +15,16 @@ export class CommandRegistry {
   /** Registered commands keyed by name. */
   private commands = new Map<string, Command>();
 
+  /** Adapter bridging commands to the live Phoenix instance. */
+  private readonly host: CommandHost;
+
   /**
+   * Create a registry bound to a live-Phoenix host.
    * @param host Adapter bridging commands to the live Phoenix instance.
    */
-  constructor(private readonly host: CommandHost) {}
+  constructor(host: CommandHost) {
+    this.host = host;
+  }
 
   /**
    * Register a command. A later registration with the same name replaces it.
