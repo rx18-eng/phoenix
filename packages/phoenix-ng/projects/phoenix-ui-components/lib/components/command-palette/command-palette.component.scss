@@ -1,0 +1,129 @@
+.cmdp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.cmdp-panel {
+  width: min(640px, 92vw);
+  max-height: 70vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--phoenix-menu-bg, #1e1e24);
+  color: var(--phoenix-menu-text, #f5f5f5);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.cmdp-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  outline: none;
+}
+
+.cmdp-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+}
+
+.cmdp-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'title cat' 'desc desc';
+  gap: 2px 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+
+  &.selected {
+    background: rgba(120, 160, 255, 0.18);
+  }
+}
+
+.cmdp-item-title {
+  grid-area: title;
+  font-weight: 600;
+}
+
+.cmdp-item-cat {
+  grid-area: cat;
+  font-size: 11px;
+  opacity: 0.6;
+  align-self: center;
+}
+
+.cmdp-item-desc {
+  grid-area: desc;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.cmdp-empty {
+  padding: 16px;
+  opacity: 0.6;
+  text-align: center;
+}
+
+.cmdp-form-title {
+  padding: 14px 16px 4px;
+  font-weight: 600;
+}
+
+.cmdp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+}
+
+.cmdp-label {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.cmdp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.cmdp-btn {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+
+  &.cmdp-btn-run {
+    background: rgba(120, 160, 255, 0.35);
+    border-color: transparent;
+  }
+}
+
+.cmdp-result {
+  padding: 10px 16px;
+  font-size: 13px;
+
+  &.ok {
+    color: #7fd18b;
+  }
+
+  &.err {
+    color: #ff8a8a;
+  }
+}

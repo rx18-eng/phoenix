@@ -80,6 +80,7 @@ import {
   MasterclassPanelComponent,
   MasterclassPanelOverlayComponent,
   SessionPillComponent,
+  CommandPaletteComponent,
 } from './ui-menu';
 
 import { AttributePipe } from '../services/extras/attribute.pipe';
@@ -161,6 +162,7 @@ const PHOENIX_COMPONENTS: Type<any>[] = [
   MasterclassPanelOverlayComponent,
   SessionPillComponent,
   ShortcutsDialogComponent,
+  CommandPaletteComponent,
 ];
 
 @NgModule({
