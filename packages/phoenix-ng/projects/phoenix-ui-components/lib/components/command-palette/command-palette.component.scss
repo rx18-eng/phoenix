@@ -47,6 +47,11 @@
   padding: 8px 16px;
   cursor: pointer;
 
+  // Hover highlight is pure CSS on purpose: a JS (mouseenter) handler would
+  // trigger a full app-wide Angular change-detection tick on every mouse move
+  // over the list, which freezes the heavy 3D scene (#942). Keyboard arrows
+  // drive `.selected`.
+  &:hover,
   &.selected {
     background: rgba(120, 160, 255, 0.18);
   }

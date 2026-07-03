@@ -36,9 +36,19 @@ function make(
   const notify: any = { success: jest.fn(), error: jest.fn() };
   const host = { contains: jest.fn(() => false) };
   const elementRef: any = { nativeElement: host };
-  const c = new CommandPaletteComponent(eventDisplay, cdr, notify, elementRef);
+  const ngZone: any = {
+    runOutsideAngular: jest.fn((fn: () => any) => fn()),
+    run: jest.fn((fn: () => any) => fn()),
+  };
+  const c = new CommandPaletteComponent(
+    eventDisplay,
+    cdr,
+    notify,
+    elementRef,
+    ngZone,
+  );
   c.ngOnInit();
-  return { c, registry, notify, host };
+  return { c, registry, notify, host, ngZone };
 }
 
 const key = (over: any) =>
@@ -101,6 +111,11 @@ describe('CommandPaletteComponent (keyboard + filter)', () => {
     c.onDocumentKeydown(key({ key: 'ArrowDown' }));
     expect(c.open).toBe(false);
     expect(c.selectedIndex).toBe(0);
+  });
+
+  it('registers its global listeners OUTSIDE the Angular zone (no per-event app tick)', () => {
+    const { ngZone } = make();
+    expect(ngZone.runOutsideAngular).toHaveBeenCalled();
   });
 
   it('closes on a mousedown outside the panel', () => {

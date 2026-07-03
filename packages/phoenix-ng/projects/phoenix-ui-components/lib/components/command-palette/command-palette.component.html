@@ -17,7 +17,6 @@
         class="cmdp-item"
         [class.selected]="i === selectedIndex"
         (click)="choose(cmd)"
-        (mouseenter)="selectedIndex = i"
       >
         <span class="cmdp-item-title">{{ cmd.title || cmd.name }}</span>
         <span class="cmdp-item-cat">{{ cmd.category }}</span>

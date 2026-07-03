@@ -2,7 +2,8 @@ import {
   ChangeDetectorRef,
   Component,
   ElementRef,
-  HostListener,
+  NgZone,
+  type OnDestroy,
   type OnInit,
 } from '@angular/core';
 import type {
@@ -25,7 +26,7 @@ import { NotificationService } from '../../services/notification.service';
   templateUrl: './command-palette.component.html',
   styleUrls: ['./command-palette.component.scss'],
 })
-export class CommandPaletteComponent implements OnInit {
+export class CommandPaletteComponent implements OnInit, OnDestroy {
   /** Whether the palette overlay is visible. */
   open = false;
   /** Current search query. */
@@ -40,32 +41,54 @@ export class CommandPaletteComponent implements OnInit {
   paramValues: Record<string, any> = {};
 
   private registry!: CommandRegistry;
+  private keydownHandler = (e: KeyboardEvent) => this.onDocumentKeydown(e);
+  private mousedownHandler = (e: MouseEvent) => this.onDocMouseDown(e);
 
   /**
    * @param eventDisplay The Phoenix event display service.
    * @param cdr Change detector for pushing updates outside Angular events.
    * @param notification Service for success/error toasts after a command runs.
    * @param elementRef Host element, used to detect clicks outside the panel.
+   * @param ngZone Angular zone; palette listeners run outside it so mouse and
+   *   key events never trigger Phoenix's expensive app-wide change detection.
    */
   constructor(
     private eventDisplay: EventDisplayService,
     private cdr: ChangeDetectorRef,
     private notification: NotificationService,
     private elementRef: ElementRef<HTMLElement>,
+    private ngZone: NgZone,
   ) {}
 
-  /** Cache the command registry once the service is ready. */
+  /**
+   * Cache the command registry and register the global key/mouse listeners
+   * OUTSIDE Angular's zone. Bound via @HostListener they would run in-zone and
+   * schedule a full app-wide change-detection tick on every keystroke and
+   * mouse press anywhere in Phoenix (~seconds on the heavy 3D scene). Running
+   * them outside the zone and re-rendering only the palette via detectChanges
+   * keeps interaction cheap.
+   */
   ngOnInit(): void {
     this.registry = this.eventDisplay.getCommandRegistry();
     this.filtered = this.registry.list();
+    this.ngZone.runOutsideAngular(() => {
+      document.addEventListener('keydown', this.keydownHandler);
+      document.addEventListener('mousedown', this.mousedownHandler);
+    });
+  }
+
+  /** Remove the global listeners. */
+  ngOnDestroy(): void {
+    document.removeEventListener('keydown', this.keydownHandler);
+    document.removeEventListener('mousedown', this.mousedownHandler);
   }
 
   /**
    * Global keyboard handler: Ctrl/Cmd+K toggles the palette (excluding AltGr
    * combos); Escape closes; Arrow keys and Enter drive the list while open.
+   * Runs outside Angular's zone, so view changes are flushed via detectChanges.
    * @param event The keydown event.
    */
-  @HostListener('document:keydown', ['$event'])
   onDocumentKeydown(event: KeyboardEvent): void {
     if (
       (event.ctrlKey || event.metaKey) &&
@@ -90,9 +113,11 @@ export class CommandPaletteComponent implements OnInit {
         this.selectedIndex + 1,
         this.filtered.length - 1,
       );
+      this.cdr.detectChanges();
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+      this.cdr.detectChanges();
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const cmd = this.filtered[this.selectedIndex];
@@ -106,9 +131,9 @@ export class CommandPaletteComponent implements OnInit {
    * clicking a command that opens a parameter form detaches the clicked list
    * item, which would make a later bubbled click look "outside" and wrongly
    * close the panel.
+   * Runs outside Angular's zone; close() flushes the view via detectChanges.
    * @param event The mousedown event.
    */
-  @HostListener('document:mousedown', ['$event'])
   onDocMouseDown(event: MouseEvent): void {
     if (!this.open) return;
     if (!this.elementRef.nativeElement.contains(event.target as Node)) {
@@ -240,14 +265,18 @@ export class CommandPaletteComponent implements OnInit {
   async runNow(command: Command, args: Record<string, any>): Promise<void> {
     this.close();
     const res = await this.registry.execute(command.name, args);
-    if (res.ok) {
-      this.notification.success(`${command.title ?? command.name} done`);
-    } else {
-      // This workspace compiles without strictNullChecks, so truthiness
-      // narrowing does not split the ok:true/false result union. Read the
-      // failure message off the explicitly-typed failure variant instead.
-      const failure = res as { ok: false; error?: string };
-      this.notification.error(failure.error ?? 'Command failed');
-    }
+    // The palette runs its listeners outside Angular's zone; re-enter it so the
+    // toast (a MatSnackBar overlay) renders.
+    this.ngZone.run(() => {
+      if (res.ok) {
+        this.notification.success(`${command.title ?? command.name} done`);
+      } else {
+        // This workspace compiles without strictNullChecks, so truthiness
+        // narrowing does not split the ok:true/false result union. Read the
+        // failure message off the explicitly-typed failure variant instead.
+        const failure = res as { ok: false; error?: string };
+        this.notification.error(failure.error ?? 'Command failed');
+      }
+    });
   }
 }
