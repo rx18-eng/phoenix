@@ -34,9 +34,11 @@ function make(
   };
   const cdr: any = { detectChanges: jest.fn() };
   const notify: any = { success: jest.fn(), error: jest.fn() };
-  const c = new CommandPaletteComponent(eventDisplay, cdr, notify);
+  const host = { contains: jest.fn(() => false) };
+  const elementRef: any = { nativeElement: host };
+  const c = new CommandPaletteComponent(eventDisplay, cdr, notify, elementRef);
   c.ngOnInit();
-  return { c, registry, notify };
+  return { c, registry, notify, host };
 }
 
 const key = (over: any) =>
@@ -99,6 +101,22 @@ describe('CommandPaletteComponent (keyboard + filter)', () => {
     c.onDocumentKeydown(key({ key: 'ArrowDown' }));
     expect(c.open).toBe(false);
     expect(c.selectedIndex).toBe(0);
+  });
+
+  it('closes on a mousedown outside the panel', () => {
+    const { c, host } = make();
+    c.openPalette();
+    host.contains.mockReturnValue(false);
+    c.onDocMouseDown({ target: {} } as unknown as MouseEvent);
+    expect(c.open).toBe(false);
+  });
+
+  it('stays open on a mousedown inside the panel', () => {
+    const { c, host } = make();
+    c.openPalette();
+    host.contains.mockReturnValue(true);
+    c.onDocMouseDown({ target: {} } as unknown as MouseEvent);
+    expect(c.open).toBe(true);
   });
 });
 

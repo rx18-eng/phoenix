@@ -1,15 +1,14 @@
-.cmdp-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 12vh;
-  background: rgba(0, 0, 0, 0.45);
-}
-
+// A floating panel, NOT a full-screen backdrop: covering the continuously
+// rendering WebGL canvas with a fixed inset:0 layer forces the browser out of
+// its fast canvas-presentation path into per-frame compositing of the whole
+// heavy scene, which drags/freezes the view on modest GPUs. Every other Phoenix
+// overlay (event-browser, session-pill) floats the same way. See #942.
 .cmdp-panel {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
   width: min(640px, 92vw);
   max-height: 70vh;
   overflow: hidden;

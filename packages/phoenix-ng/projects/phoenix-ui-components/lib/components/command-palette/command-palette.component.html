@@ -1,95 +1,86 @@
-<div
-  *ngIf="open"
-  class="cmdp-backdrop"
-  (click)="close()"
-  role="dialog"
-  aria-modal="true"
-  aria-label="Command palette"
->
-  <div class="cmdp-panel" (click)="$event.stopPropagation()">
-    <!-- Command picker -->
-    <ng-container *ngIf="!activeCommand">
+<div *ngIf="open" class="cmdp-panel" role="dialog" aria-label="Command palette">
+  <!-- Command picker -->
+  <ng-container *ngIf="!activeCommand">
+    <input
+      #searchInput
+      type="text"
+      class="cmdp-input"
+      placeholder="Type a command…"
+      aria-label="Search commands"
+      tabindex="0"
+      [ngModel]="query"
+      (ngModelChange)="updateQuery($event)"
+    />
+    <ul class="cmdp-list">
+      <li
+        *ngFor="let cmd of filtered; let i = index"
+        class="cmdp-item"
+        [class.selected]="i === selectedIndex"
+        (click)="choose(cmd)"
+        (mouseenter)="selectedIndex = i"
+      >
+        <span class="cmdp-item-title">{{ cmd.title || cmd.name }}</span>
+        <span class="cmdp-item-cat">{{ cmd.category }}</span>
+        <span class="cmdp-item-desc">{{ cmd.description }}</span>
+      </li>
+      <li *ngIf="filtered.length === 0" class="cmdp-empty">
+        No matching commands
+      </li>
+    </ul>
+  </ng-container>
+
+  <!-- Parameter form -->
+  <ng-container *ngIf="activeCommand">
+    <div class="cmdp-form-title">
+      {{ activeCommand.title || activeCommand.name }}
+    </div>
+    <div class="cmdp-field" *ngFor="let p of activeParams()">
+      <label class="cmdp-label" [attr.for]="'cmdp-' + p.name">
+        {{ p.name
+        }}<span *ngIf="p.prop.description">: {{ p.prop.description }}</span>
+      </label>
+
       <input
-        #searchInput
-        type="text"
-        class="cmdp-input"
-        placeholder="Type a command…"
-        aria-label="Search commands"
-        tabindex="0"
-        [ngModel]="query"
-        (ngModelChange)="updateQuery($event)"
+        *ngIf="p.prop.type === 'boolean'"
+        [id]="'cmdp-' + p.name"
+        type="checkbox"
+        [(ngModel)]="paramValues[p.name]"
       />
-      <ul class="cmdp-list">
-        <li
-          *ngFor="let cmd of filtered; let i = index"
-          class="cmdp-item"
-          [class.selected]="i === selectedIndex"
-          (click)="choose(cmd)"
-          (mouseenter)="selectedIndex = i"
-        >
-          <span class="cmdp-item-title">{{ cmd.title || cmd.name }}</span>
-          <span class="cmdp-item-cat">{{ cmd.category }}</span>
-          <span class="cmdp-item-desc">{{ cmd.description }}</span>
-        </li>
-        <li *ngIf="filtered.length === 0" class="cmdp-empty">
-          No matching commands
-        </li>
-      </ul>
-    </ng-container>
 
-    <!-- Parameter form -->
-    <ng-container *ngIf="activeCommand">
-      <div class="cmdp-form-title">
-        {{ activeCommand.title || activeCommand.name }}
-      </div>
-      <div class="cmdp-field" *ngFor="let p of activeParams()">
-        <label class="cmdp-label" [attr.for]="'cmdp-' + p.name">
-          {{ p.name
-          }}<span *ngIf="p.prop.description">: {{ p.prop.description }}</span>
-        </label>
+      <select
+        *ngIf="p.prop.type !== 'boolean' && optionsFor(p.prop).length > 0"
+        [id]="'cmdp-' + p.name"
+        [(ngModel)]="paramValues[p.name]"
+      >
+        <option value="">Select…</option>
+        <option *ngFor="let opt of optionsFor(p.prop)" [value]="opt">
+          {{ opt }}
+        </option>
+      </select>
 
-        <input
-          *ngIf="p.prop.type === 'boolean'"
-          [id]="'cmdp-' + p.name"
-          type="checkbox"
-          [(ngModel)]="paramValues[p.name]"
-        />
+      <input
+        *ngIf="p.prop.type !== 'boolean' && optionsFor(p.prop).length === 0"
+        [id]="'cmdp-' + p.name"
+        [type]="
+          p.prop.type === 'number' || p.prop.type === 'integer'
+            ? 'number'
+            : 'text'
+        "
+        [(ngModel)]="paramValues[p.name]"
+      />
+    </div>
 
-        <select
-          *ngIf="p.prop.type !== 'boolean' && optionsFor(p.prop).length > 0"
-          [id]="'cmdp-' + p.name"
-          [(ngModel)]="paramValues[p.name]"
-        >
-          <option value="">Select…</option>
-          <option *ngFor="let opt of optionsFor(p.prop)" [value]="opt">
-            {{ opt }}
-          </option>
-        </select>
-
-        <input
-          *ngIf="p.prop.type !== 'boolean' && optionsFor(p.prop).length === 0"
-          [id]="'cmdp-' + p.name"
-          [type]="
-            p.prop.type === 'number' || p.prop.type === 'integer'
-              ? 'number'
-              : 'text'
-          "
-          [(ngModel)]="paramValues[p.name]"
-        />
-      </div>
-
-      <div class="cmdp-actions">
-        <button type="button" class="cmdp-btn" (click)="activeCommand = null">
-          Back
-        </button>
-        <button
-          type="button"
-          class="cmdp-btn cmdp-btn-run"
-          (click)="submitParams()"
-        >
-          Run
-        </button>
-      </div>
-    </ng-container>
-  </div>
+    <div class="cmdp-actions">
+      <button type="button" class="cmdp-btn" (click)="activeCommand = null">
+        Back
+      </button>
+      <button
+        type="button"
+        class="cmdp-btn cmdp-btn-run"
+        (click)="submitParams()"
+      >
+        Run
+      </button>
+    </div>
+  </ng-container>
 </div>

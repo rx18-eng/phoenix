@@ -1,6 +1,7 @@
 import {
   ChangeDetectorRef,
   Component,
+  ElementRef,
   HostListener,
   type OnInit,
 } from '@angular/core';
@@ -44,11 +45,13 @@ export class CommandPaletteComponent implements OnInit {
    * @param eventDisplay The Phoenix event display service.
    * @param cdr Change detector for pushing updates outside Angular events.
    * @param notification Service for success/error toasts after a command runs.
+   * @param elementRef Host element, used to detect clicks outside the panel.
    */
   constructor(
     private eventDisplay: EventDisplayService,
     private cdr: ChangeDetectorRef,
     private notification: NotificationService,
+    private elementRef: ElementRef<HTMLElement>,
   ) {}
 
   /** Cache the command registry once the service is ready. */
@@ -94,6 +97,22 @@ export class CommandPaletteComponent implements OnInit {
       event.preventDefault();
       const cmd = this.filtered[this.selectedIndex];
       if (cmd) this.choose(cmd);
+    }
+  }
+
+  /**
+   * Close the palette when the user presses down outside the panel. Uses
+   * mousedown (not click) so containment is checked before Angular re-renders:
+   * clicking a command that opens a parameter form detaches the clicked list
+   * item, which would make a later bubbled click look "outside" and wrongly
+   * close the panel.
+   * @param event The mousedown event.
+   */
+  @HostListener('document:mousedown', ['$event'])
+  onDocMouseDown(event: MouseEvent): void {
+    if (!this.open) return;
+    if (!this.elementRef.nativeElement.contains(event.target as Node)) {
+      this.close();
     }
   }
 
