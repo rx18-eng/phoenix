@@ -33,9 +33,10 @@ function make(
     getEventsData: () => ({}),
   };
   const cdr: any = { detectChanges: jest.fn() };
-  const c = new CommandPaletteComponent(eventDisplay, cdr);
+  const notify: any = { success: jest.fn(), error: jest.fn() };
+  const c = new CommandPaletteComponent(eventDisplay, cdr, notify);
   c.ngOnInit();
-  return { c, registry };
+  return { c, registry, notify };
 }
 
 const key = (over: any) =>
@@ -110,6 +111,15 @@ describe('CommandPaletteComponent (choose, params, run)', () => {
     expect(registry.execute).toHaveBeenCalledWith('next-event', {});
   });
 
+  it('CLOSES the palette when a command runs, and toasts success (backdrop must not persist over the canvas)', async () => {
+    const { c, notify } = make();
+    c.openPalette();
+    expect(c.open).toBe(true);
+    await c.choose(c.filtered.find((x) => x.name === 'next-event')!);
+    expect(c.open).toBe(false);
+    expect(notify.success).toHaveBeenCalled();
+  });
+
   it('opens a param form for a command with parameters (no execute yet)', async () => {
     const themed = fakeCommand('set-theme', {
       inputSchema: {
@@ -175,12 +185,12 @@ describe('CommandPaletteComponent (choose, params, run)', () => {
     });
   });
 
-  it('shows an error result when a command fails', async () => {
-    const { c, registry } = make();
+  it('toasts an error (and still closes) when a command fails', async () => {
+    const { c, registry, notify } = make();
     registry.execute.mockResolvedValueOnce({ ok: false, error: 'boom' });
     c.openPalette();
     await c.choose(c.filtered.find((x) => x.name === 'next-event')!);
-    expect(c.result?.ok).toBe(false);
-    expect(c.result?.text).toContain('boom');
+    expect(notify.error).toHaveBeenCalledWith('boom');
+    expect(c.open).toBe(false);
   });
 });

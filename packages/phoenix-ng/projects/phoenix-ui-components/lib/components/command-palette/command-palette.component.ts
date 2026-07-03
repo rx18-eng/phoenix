@@ -10,6 +10,7 @@ import type {
   CommandRegistry,
 } from 'phoenix-event-display';
 import { EventDisplayService } from '../../services/event-display.service';
+import { NotificationService } from '../../services/notification.service';
 
 /**
  * Keyboard-triggered command palette (#942). Opens on Ctrl/Cmd+K, lists the
@@ -36,18 +37,18 @@ export class CommandPaletteComponent implements OnInit {
   activeCommand: Command | null = null;
   /** Working parameter values for the active command's form. */
   paramValues: Record<string, any> = {};
-  /** Last execution result banner, or null. */
-  result: { ok: boolean; text: string } | null = null;
 
   private registry!: CommandRegistry;
 
   /**
    * @param eventDisplay The Phoenix event display service.
    * @param cdr Change detector for pushing updates outside Angular events.
+   * @param notification Service for success/error toasts after a command runs.
    */
   constructor(
     private eventDisplay: EventDisplayService,
     private cdr: ChangeDetectorRef,
+    private notification: NotificationService,
   ) {}
 
   /** Cache the command registry once the service is ready. */
@@ -106,7 +107,6 @@ export class CommandPaletteComponent implements OnInit {
   openPalette(): void {
     this.open = true;
     this.query = '';
-    this.result = null;
     this.activeCommand = null;
     this.selectedIndex = 0;
     this.filtered = this.registry.list();
@@ -117,7 +117,6 @@ export class CommandPaletteComponent implements OnInit {
   close(): void {
     this.open = false;
     this.activeCommand = null;
-    this.result = null;
     this.cdr.detectChanges();
   }
 
@@ -145,7 +144,6 @@ export class CommandPaletteComponent implements OnInit {
    * @param command The chosen command.
    */
   async choose(command: Command): Promise<void> {
-    this.result = null;
     const props = command.inputSchema?.properties ?? {};
     if (Object.keys(props).length === 0) {
       await this.runNow(command, {});
@@ -211,23 +209,26 @@ export class CommandPaletteComponent implements OnInit {
   }
 
   /**
-   * Execute a command through the registry and show the result banner.
+   * Execute a command through the registry. The palette closes FIRST so its
+   * full-screen overlay never sits over the live WebGL canvas while a command
+   * runs: an overlay above a continuously-rendering scene (e.g. after
+   * enabling auto-rotate) disables the browser's direct-canvas path and can
+   * exhaust the GPU into a context loss. Feedback is a toast, not an in-palette
+   * banner, since the palette is already gone.
    * @param command The command to run.
    * @param args The argument object.
    */
   async runNow(command: Command, args: Record<string, any>): Promise<void> {
+    this.close();
     const res = await this.registry.execute(command.name, args);
     if (res.ok) {
-      this.result = { ok: true, text: `${command.title ?? command.name} done` };
-      this.activeCommand = null;
-      this.query = '';
+      this.notification.success(`${command.title ?? command.name} done`);
     } else {
       // This workspace compiles without strictNullChecks, so truthiness
       // narrowing does not split the ok:true/false result union. Read the
       // failure message off the explicitly-typed failure variant instead.
       const failure = res as { ok: false; error?: string };
-      this.result = { ok: false, text: failure.error ?? 'Command failed' };
+      this.notification.error(failure.error ?? 'Command failed');
     }
-    this.cdr.detectChanges();
   }
 }
