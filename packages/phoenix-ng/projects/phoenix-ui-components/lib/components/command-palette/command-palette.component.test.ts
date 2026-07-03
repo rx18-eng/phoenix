@@ -144,13 +144,13 @@ describe('CommandPaletteComponent (choose, params, run)', () => {
     expect(registry.execute).toHaveBeenCalledWith('next-event', {});
   });
 
-  it('CLOSES the palette when a command runs, and toasts success (backdrop must not persist over the canvas)', async () => {
+  it('CLOSES the palette when a command runs, WITHOUT a success toast (the visible command effect is the feedback; a per-command MatSnackBar overlay stalls the heavy 3D scene)', async () => {
     const { c, notify } = make();
     c.openPalette();
     expect(c.open).toBe(true);
     await c.choose(c.filtered.find((x) => x.name === 'next-event')!);
     expect(c.open).toBe(false);
-    expect(notify.success).toHaveBeenCalled();
+    expect(notify.success).not.toHaveBeenCalled();
   });
 
   it('opens a param form for a command with parameters (no execute yet)', async () => {

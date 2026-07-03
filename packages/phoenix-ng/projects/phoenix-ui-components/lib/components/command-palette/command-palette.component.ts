@@ -254,29 +254,27 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
 
   /**
    * Execute a command through the registry. The palette closes FIRST so its
-   * full-screen overlay never sits over the live WebGL canvas while a command
-   * runs: an overlay above a continuously-rendering scene (e.g. after
-   * enabling auto-rotate) disables the browser's direct-canvas path and can
-   * exhaust the GPU into a context loss. Feedback is a toast, not an in-palette
-   * banner, since the palette is already gone.
+   * panel never sits over the live WebGL canvas while a command runs.
+   *
+   * On success there is NO toast: the command's own effect (theme change, axis
+   * appears, camera moves) is the feedback, and opening a MatSnackBar overlay
+   * on top of the continuously-rendering full-resolution 3D scene for every
+   * command stalls the page. Only the rare failure path surfaces a toast.
    * @param command The command to run.
    * @param args The argument object.
    */
   async runNow(command: Command, args: Record<string, any>): Promise<void> {
     this.close();
     const res = await this.registry.execute(command.name, args);
-    // The palette runs its listeners outside Angular's zone; re-enter it so the
-    // toast (a MatSnackBar overlay) renders.
-    this.ngZone.run(() => {
-      if (res.ok) {
-        this.notification.success(`${command.title ?? command.name} done`);
-      } else {
-        // This workspace compiles without strictNullChecks, so truthiness
-        // narrowing does not split the ok:true/false result union. Read the
-        // failure message off the explicitly-typed failure variant instead.
-        const failure = res as { ok: false; error?: string };
-        this.notification.error(failure.error ?? 'Command failed');
-      }
-    });
+    if (!res.ok) {
+      // This workspace compiles without strictNullChecks, so truthiness
+      // narrowing does not split the ok:true/false result union. Read the
+      // failure message off the explicitly-typed failure variant instead.
+      const failure = res as { ok: false; error?: string };
+      // Re-enter the zone (listeners run outside it) so the toast renders.
+      this.ngZone.run(() =>
+        this.notification.error(failure.error ?? 'Command failed'),
+      );
+    }
   }
 }
