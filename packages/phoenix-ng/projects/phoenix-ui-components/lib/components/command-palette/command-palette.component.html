@@ -33,7 +33,7 @@
     <div class="cmdp-form-title">
       {{ activeCommand.title || activeCommand.name }}
     </div>
-    <div class="cmdp-field" *ngFor="let p of activeParams()">
+    <div class="cmdp-field" *ngFor="let p of formFields; trackBy: trackByName">
       <label class="cmdp-label" [attr.for]="'cmdp-' + p.name">
         {{ p.name
         }}<span *ngIf="p.prop.description">: {{ p.prop.description }}</span>
@@ -47,18 +47,18 @@
       />
 
       <select
-        *ngIf="p.prop.type !== 'boolean' && optionsFor(p.prop).length > 0"
+        *ngIf="p.prop.type !== 'boolean' && p.options.length > 0"
         [id]="'cmdp-' + p.name"
         [(ngModel)]="paramValues[p.name]"
       >
         <option value="">Select…</option>
-        <option *ngFor="let opt of optionsFor(p.prop)" [value]="opt">
+        <option *ngFor="let opt of p.options" [value]="opt">
           {{ opt }}
         </option>
       </select>
 
       <input
-        *ngIf="p.prop.type !== 'boolean' && optionsFor(p.prop).length === 0"
+        *ngIf="p.prop.type !== 'boolean' && p.options.length === 0"
         [id]="'cmdp-' + p.name"
         [type]="
           p.prop.type === 'number' || p.prop.type === 'integer'
@@ -70,9 +70,7 @@
     </div>
 
     <div class="cmdp-actions">
-      <button type="button" class="cmdp-btn" (click)="activeCommand = null">
-        Back
-      </button>
+      <button type="button" class="cmdp-btn" (click)="back()">Back</button>
       <button
         type="button"
         class="cmdp-btn cmdp-btn-run"

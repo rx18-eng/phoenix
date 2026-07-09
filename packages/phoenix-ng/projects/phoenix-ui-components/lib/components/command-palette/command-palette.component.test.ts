@@ -169,6 +169,50 @@ describe('CommandPaletteComponent (choose, params, run)', () => {
     expect(registry.execute).not.toHaveBeenCalled();
   });
 
+  it('precomputes the form fields ONCE into a stable array (no per-CD template method that would loop *ngFor + ngModel)', async () => {
+    const themed = fakeCommand('set-theme', {
+      inputSchema: {
+        type: 'object',
+        properties: {
+          dark: { type: 'boolean', description: 'True for dark' },
+        },
+        required: ['dark'],
+        additionalProperties: false,
+      },
+    });
+    const { c } = make([themed]);
+    c.openPalette();
+    await c.choose(themed);
+    // Fields are built and carry precomputed options (not a live method call).
+    expect(c.formFields.map((f) => f.name)).toEqual(['dark']);
+    expect(c.formFields[0].options).toEqual([]);
+    // The SAME array reference is returned every read: Angular's *ngFor differ
+    // sees no change across change-detection cycles, so it never recreates the
+    // ngModel inputs (which is what caused the infinite CD loop / page freeze).
+    expect(c.formFields).toBe(c.formFields);
+    const ref = c.formFields;
+    (c as any).cdr.detectChanges();
+    expect(c.formFields).toBe(ref);
+  });
+
+  it('precomputes enumSource options into the fields when the form opens', async () => {
+    const cmd = fakeCommand('preset-view', {
+      inputSchema: {
+        type: 'object',
+        properties: { view: { type: 'string', enumSource: 'presetViews' } },
+        required: ['view'],
+        additionalProperties: false,
+      },
+    });
+    const { c } = make([cmd]);
+    (c as any).eventDisplay.getUIManager = () => ({
+      getPresetViews: () => [{ name: 'Front' }, { name: 'Side' }],
+    });
+    c.openPalette();
+    await c.choose(cmd);
+    expect(c.formFields[0].options).toEqual(['Front', 'Side']);
+  });
+
   it('resolves enumSource options from the live service', () => {
     const cmd = fakeCommand('preset-view', {
       inputSchema: {

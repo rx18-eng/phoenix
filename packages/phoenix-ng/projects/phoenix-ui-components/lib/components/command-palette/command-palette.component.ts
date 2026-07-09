@@ -39,6 +39,16 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
   activeCommand: Command | null = null;
   /** Working parameter values for the active command's form. */
   paramValues: Record<string, any> = {};
+  /**
+   * Fields rendered by the parameter form, built ONCE when a command's form
+   * opens. This is a stable array (with precomputed option lists) iterated by
+   * `*ngFor` + `trackBy`. It must NOT be a template method call: a method that
+   * returns a fresh array every change-detection cycle makes `*ngFor` recreate
+   * its embedded `[(ngModel)]` inputs each cycle, whose value-accessor writes
+   * schedule another cycle, spinning into an infinite change-detection loop
+   * that hard-freezes the tab.
+   */
+  formFields: { name: string; prop: CommandProperty; options: string[] }[] = [];
 
   private registry!: CommandRegistry;
   private keydownHandler = (e: KeyboardEvent) => this.onDocumentKeydown(e);
@@ -152,6 +162,7 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     this.open = true;
     this.query = '';
     this.activeCommand = null;
+    this.formFields = [];
     this.selectedIndex = 0;
     this.filtered = this.registry.list();
     this.cdr.detectChanges();
@@ -161,6 +172,7 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
   close(): void {
     this.open = false;
     this.activeCommand = null;
+    this.formFields = [];
     this.cdr.detectChanges();
   }
 
@@ -195,16 +207,33 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     }
     this.activeCommand = command;
     this.paramValues = {};
-    for (const [name, prop] of Object.entries(props)) {
+    // Build the form fields ONCE here (stable array + precomputed options),
+    // in declared order. The template iterates this field with trackBy; it
+    // never calls a method that rebuilds the array each change-detection cycle.
+    this.formFields = Object.entries(props).map(([name, prop]) => {
       this.paramValues[name] = prop.type === 'boolean' ? false : '';
-    }
+      return { name, prop, options: this.optionsFor(prop) };
+    });
+    this.cdr.detectChanges();
+  }
+
+  /** trackBy for the form fields: param names are unique within a command. */
+  trackByName(_index: number, field: { name: string }): string {
+    return field.name;
+  }
+
+  /** Leave the parameter form and return to the command list. */
+  back(): void {
+    this.activeCommand = null;
+    this.formFields = [];
     this.cdr.detectChanges();
   }
 
   /**
    * Resolve the selectable options for a parameter, from a static enum or a
    * live enumSource (collections, presetViews, eventKeys). An empty array
-   * means the field is rendered as free text.
+   * means the field is rendered as free text. Called once per field when the
+   * form opens (see `choose`), never from the template.
    * @param prop The parameter schema.
    * @returns The option strings.
    */
@@ -222,15 +251,6 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
       default:
         return [];
     }
-  }
-
-  /**
-   * The active command's parameters in declared order, for the form template.
-   * @returns Name/schema pairs, or an empty array when no command is active.
-   */
-  activeParams(): { name: string; prop: CommandProperty }[] {
-    const props = this.activeCommand?.inputSchema?.properties ?? {};
-    return Object.entries(props).map(([name, prop]) => ({ name, prop }));
   }
 
   /** Submit the active command's parameter form, coercing values by type. */
