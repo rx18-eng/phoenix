@@ -171,6 +171,34 @@ export function validateIntent(
 }
 
 /**
+ * Defensively parse a model's text reply into an intent object. Constrained
+ * decoding returns pure JSON, but this also tolerates markdown code fences and
+ * surrounding prose by extracting the first balanced `{...}` block. Returns
+ * null when no JSON object is present (never throws).
+ * @param text The model's raw text output.
+ * @returns The parsed object, or null.
+ */
+export function parseIntentJson(text: string): unknown {
+  const raw = (text ?? '').trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    /* fall through to extraction */
+  }
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      /* not valid JSON */
+    }
+  }
+  return null;
+}
+
+/**
  * Deterministic keyword fallback used when no model is available (e.g. no
  * WebGPU). Maps a handful of common phrasings to safe, no-/simple-argument
  * commands, and returns `null` rather than ever guessing a command. Any intent

@@ -6,6 +6,7 @@ import {
   buildSystemPrompt,
   validateIntent,
   keywordFallback,
+  parseIntentJson,
 } from '../../../managers/command-registry/nl-intent';
 
 function reg(): CommandRegistry {
@@ -174,5 +175,30 @@ describe('nl-intent: keywordFallback (deterministic, no model)', () => {
       const intent = keywordFallback(text)!;
       expect(validateIntent(intent, r).ok).toBe(true);
     }
+  });
+});
+
+describe('nl-intent: parseIntentJson', () => {
+  it('parses pure JSON (the constrained-decoding happy path)', () => {
+    expect(parseIntentJson('{"command":"next-event","args":{}}')).toEqual({
+      command: 'next-event',
+      args: {},
+    });
+  });
+
+  it('extracts the JSON object from markdown fences / surrounding prose', () => {
+    const fenced = '```json\n{"command":"set-theme","args":{"dark":true}}\n```';
+    expect(parseIntentJson(fenced)).toEqual({
+      command: 'set-theme',
+      args: { dark: true },
+    });
+    const prose = 'Sure! {"command":"next-event","args":{}} hope that helps';
+    expect(parseIntentJson(prose)).toEqual({ command: 'next-event', args: {} });
+  });
+
+  it('returns null for empty or non-JSON text (never throws)', () => {
+    expect(parseIntentJson('')).toBeNull();
+    expect(parseIntentJson('no json here')).toBeNull();
+    expect(parseIntentJson('{ broken')).toBeNull();
   });
 });
