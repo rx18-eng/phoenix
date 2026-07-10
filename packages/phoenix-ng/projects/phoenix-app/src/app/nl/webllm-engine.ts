@@ -2,11 +2,14 @@ import { parseIntentJson } from 'phoenix-event-display';
 import type { NlEngine } from 'phoenix-ui-components';
 
 /**
- * Default in-browser model for natural-language command mapping. A tiny
- * instruct model is enough because constrained decoding (the schema grammar)
- * does the structural heavy lifting; the model only has to pick intent.
+ * Default in-browser model for natural-language command mapping. Constrained
+ * decoding guarantees the output is a VALID command, but picking the RIGHT
+ * command from intent still needs a capable model: a 1.5B instruct model is a
+ * good accuracy/size balance (the 0.5B mis-mapped requests like "hide the
+ * calorimeter"). Weaker devices that cannot load it degrade to the keyword
+ * fallback. Overridable via createWebLlmEngineFactory(modelId).
  */
-export const DEFAULT_NL_MODEL = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
+export const DEFAULT_NL_MODEL = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
 
 /**
  * Whether this browser can actually run WebLLM: WebGPU must be present AND

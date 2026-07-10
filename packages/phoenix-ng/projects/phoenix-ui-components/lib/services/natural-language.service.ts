@@ -118,11 +118,36 @@ export class NaturalLanguageService {
   }
 
   /**
+   * Whether a real WebGPU adapter is available. `navigator.gpu` can exist with
+   * no usable adapter (e.g. software-only or blocked GPUs), so this asks for
+   * one. Used to fail fast before a large model download that would only error.
+   * @returns True when an adapter can be acquired.
+   */
+  private async hasWebGpuAdapter(): Promise<boolean> {
+    const gpu = (navigator as any)?.gpu;
+    if (!gpu) return false;
+    try {
+      return !!(await gpu.requestAdapter());
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Opt in to the in-browser model: lazily load it via the app-provided
-   * factory. No-op when no factory was provided (fallback stays in effect).
+   * factory. Fails fast (without downloading anything) when there is no usable
+   * WebGPU adapter, leaving the keyword fallback in effect. No-op when no
+   * factory was provided.
    */
   async enableModel(): Promise<void> {
-    if (this.engineFactory) await this.loadEngine(this.engineFactory);
+    if (!this.engineFactory) return;
+    if (!(await this.hasWebGpuAdapter())) {
+      this.status = 'error';
+      this.lastError =
+        'No usable WebGPU adapter on this device; using keyword matching.';
+      return;
+    }
+    await this.loadEngine(this.engineFactory);
   }
 
   /** Whether a model engine is currently loaded. */
@@ -177,8 +202,9 @@ export class NaturalLanguageService {
     let usedFallback = false;
 
     if (this.engine) {
-      const schema = buildIntentSchema(tools, this.resolveEnums());
-      const prompt = buildSystemPrompt(tools);
+      const enums = this.resolveEnums();
+      const schema = buildIntentSchema(tools, enums);
+      const prompt = buildSystemPrompt(tools, enums);
       this.status = 'thinking';
       try {
         parsed = await this.engine.interpret(text, schema, prompt);
@@ -259,6 +285,28 @@ export class NaturalLanguageService {
     try {
       const events = ed.getEventsData?.();
       if (events) enums.eventKeys = Object.keys(events);
+    } catch {
+      /* leave unconstrained */
+    }
+    try {
+      // Real detector-geometry part names (top two levels of the live scene
+      // tree), so "hide the calorimeter" maps to an actual part. Read live so
+      // it stays experiment-agnostic (ATLAS/LHCb/CMS have different parts).
+      const geometries = ed
+        .getThreeManager?.()
+        ?.getSceneManager?.()
+        ?.getGeometries?.();
+      const children: any[] = geometries?.children ?? [];
+      if (children.length) {
+        const parts = new Set<string>();
+        for (const child of children) {
+          if (child?.name) parts.add(child.name);
+          for (const grandChild of child?.children ?? []) {
+            if (grandChild?.name) parts.add(grandChild.name);
+          }
+        }
+        if (parts.size) enums.geometryParts = [...parts].slice(0, 60);
+      }
     } catch {
       /* leave unconstrained */
     }

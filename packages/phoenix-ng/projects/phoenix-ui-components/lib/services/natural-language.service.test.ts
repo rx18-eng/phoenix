@@ -198,14 +198,29 @@ describe('NaturalLanguageService (model availability + opt-in)', () => {
     (navigator as any).gpu = original;
   });
 
-  it('enableModel loads the engine via the provided factory', async () => {
+  it('enableModel loads the engine via the provided factory (adapter present)', async () => {
     const engine: NlEngine = { interpret: jest.fn(async () => ({})) };
     const factory = jest.fn(async () => engine);
     const svc = new NaturalLanguageService(eventDisplay, factory);
+    const original = (navigator as any).gpu;
+    (navigator as any).gpu = { requestAdapter: async () => ({}) };
     await svc.enableModel();
     expect(factory).toHaveBeenCalled();
     expect(svc.hasEngine).toBe(true);
     expect(svc.status).toBe('ready');
+    (navigator as any).gpu = original;
+  });
+
+  it('enableModel fails fast (no download) when there is no WebGPU adapter', async () => {
+    const factory = jest.fn(async () => ({ interpret: jest.fn() }));
+    const svc = new NaturalLanguageService(eventDisplay, factory);
+    const original = (navigator as any).gpu;
+    (navigator as any).gpu = { requestAdapter: async () => null };
+    await svc.enableModel();
+    expect(factory).not.toHaveBeenCalled();
+    expect(svc.hasEngine).toBe(false);
+    expect(svc.status).toBe('error');
+    (navigator as any).gpu = original;
   });
 
   it('enableModel is a no-op when no factory was provided', async () => {

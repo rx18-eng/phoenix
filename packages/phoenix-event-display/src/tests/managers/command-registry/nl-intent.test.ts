@@ -88,6 +88,25 @@ describe('nl-intent: buildSystemPrompt', () => {
     expect(prompt.toLowerCase()).toContain('json');
     expect(prompt).toContain('none');
   });
+
+  it('includes worked few-shot examples for registered commands', () => {
+    const prompt = buildSystemPrompt(reg().toToolSchemas());
+    expect(prompt).toContain('Examples:');
+    expect(prompt).toContain('user: go to the next event');
+    expect(prompt).toContain('"command":"next-event"');
+    // and the intent example the model got wrong in the wild
+    expect(prompt).toContain('user: hide the calorimeter');
+    expect(prompt).toContain('"command":"set-geometry-visibility"');
+  });
+
+  it('shows allowed argument values (static enums and resolved enumSources)', () => {
+    const tools = reg().toToolSchemas();
+    expect(buildSystemPrompt(tools)).toContain('in|out'); // zoom direction enum
+    // resolved enumSource values appear when supplied
+    expect(
+      buildSystemPrompt(tools, { collections: ['Tracks', 'Hits'] }),
+    ).toContain('Tracks|Hits');
+  });
 });
 
 describe('nl-intent: validateIntent', () => {

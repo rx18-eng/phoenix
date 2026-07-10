@@ -112,23 +112,84 @@ export function buildIntentSchema(
 }
 
 /**
- * Build the system prompt describing the available commands to the model.
- * @param tools The registry's MCP tool shapes.
- * @returns A prompt listing every command, its description and parameters.
+ * Canonical few-shot examples spanning command categories. Only examples whose
+ * command is actually registered (or the `none` escape) are shown, so the
+ * prompt stays correct if the command set changes. Small instruct models map
+ * intent far more reliably with a few concrete examples than from a bare list.
  */
-export function buildSystemPrompt(tools: McpToolShape[]): string {
+const FEWSHOT_EXAMPLES: {
+  q: string;
+  command: string;
+  args: Record<string, any>;
+}[] = [
+  { q: 'go to the next event', command: 'next-event', args: {} },
+  {
+    q: 'hide the calorimeter',
+    command: 'set-geometry-visibility',
+    args: { part: 'calorimeter', visible: false },
+  },
+  { q: 'make the background dark', command: 'set-theme', args: { dark: true } },
+  { q: 'spin the detector', command: 'toggle-auto-rotate', args: { on: true } },
+  {
+    q: 'what collections are in this event',
+    command: 'list-collections',
+    args: {},
+  },
+  { q: 'order me a pizza', command: 'none', args: {} },
+];
+
+/** Render a parameter with its type and, when known, its allowed values. */
+function describeParam(
+  name: string,
+  prop: CommandProperty,
+  enums?: EnumSources,
+): string {
+  let allowed = '';
+  if (prop.enum) {
+    allowed = `: ${prop.enum.join('|')}`;
+  } else if (prop.enumSource && enums?.[prop.enumSource]?.length) {
+    const values = enums[prop.enumSource] as string[];
+    allowed = `: ${values.slice(0, 20).join('|')}${values.length > 20 ? '|...' : ''}`;
+  }
+  return `${name} (${prop.type}${allowed})`;
+}
+
+/**
+ * Build the system prompt describing the available commands to the model,
+ * with allowed argument values and a few worked examples. Passing the same
+ * live `enums` used for the schema lets the model see real collection/part
+ * names so it can map "the calorimeter" to an actual geometry part.
+ * @param tools The registry's MCP tool shapes.
+ * @param enums Optional live enum values to show valid argument choices.
+ * @returns A prompt listing every command, its arguments and examples.
+ */
+export function buildSystemPrompt(
+  tools: McpToolShape[],
+  enums?: EnumSources,
+): string {
+  const names = new Set(tools.map((t) => t.name));
   const lines = tools.map((t) => {
     const params = Object.entries(t.inputSchema.properties ?? {})
-      .map(([n, p]) => `${n} (${p.type})`)
+      .map(([n, p]) => describeParam(n, p, enums))
       .join(', ');
-    return `- ${t.name}: ${t.description}${params ? ` [params: ${params}]` : ''}`;
+    return `- ${t.name}: ${t.description}${params ? ` [args: ${params}]` : ''}`;
   });
+  const examples = FEWSHOT_EXAMPLES.filter(
+    (e) => e.command === 'none' || names.has(e.command),
+  ).map(
+    (e) =>
+      `user: ${e.q}\n${JSON.stringify({ command: e.command, args: e.args })}`,
+  );
   return [
-    'You control a 3D physics event display. Translate the user request into ONE command from the list below.',
-    'Respond ONLY with a JSON object {"command": <name>, "args": {...}} and nothing else.',
-    'If no command matches the request, respond {"command": "none", "args": {}}. Never invent a command.',
-    'Available commands:',
+    "You control a 3D particle-physics event display. Choose the ONE command whose purpose best matches the user's intent, and fill its arguments from the request.",
+    'Reply with ONLY a compact JSON object {"command": "<name>", "args": {...}} and nothing else: no prose, no markdown.',
+    'If no command matches, reply {"command": "none", "args": {}}. Never invent a command or an argument value.',
+    '',
+    'Commands:',
     ...lines,
+    '',
+    'Examples:',
+    ...examples,
   ].join('\n');
 }
 
