@@ -1,6 +1,30 @@
 <div *ngIf="open" class="cmdp-panel" role="dialog" aria-label="Command palette">
+  <!-- Mode toggle (hidden while a parameter form is open) -->
+  <div class="cmdp-modes" *ngIf="!activeCommand" role="tablist">
+    <button
+      type="button"
+      class="cmdp-mode"
+      [class.active]="mode === 'commands'"
+      role="tab"
+      [attr.aria-selected]="mode === 'commands'"
+      (click)="setMode('commands')"
+    >
+      Commands
+    </button>
+    <button
+      type="button"
+      class="cmdp-mode"
+      [class.active]="mode === 'ask'"
+      role="tab"
+      [attr.aria-selected]="mode === 'ask'"
+      (click)="setMode('ask')"
+    >
+      Ask
+    </button>
+  </div>
+
   <!-- Command picker -->
-  <ng-container *ngIf="!activeCommand">
+  <ng-container *ngIf="!activeCommand && mode === 'commands'">
     <input
       #searchInput
       type="text"
@@ -26,6 +50,55 @@
         No matching commands
       </li>
     </ul>
+  </ng-container>
+
+  <!-- Ask in natural language -->
+  <ng-container *ngIf="!activeCommand && mode === 'ask'">
+    <input
+      type="text"
+      class="cmdp-input"
+      [(ngModel)]="askText"
+      (keydown.enter)="runAsk()"
+      placeholder="Ask Phoenix to do something…"
+      aria-label="Ask in natural language"
+    />
+    <div class="cmdp-ask-meta">
+      <ng-container *ngIf="aiModelAvailable; else noModel">
+        <button
+          *ngIf="aiStatus === 'idle'"
+          type="button"
+          class="cmdp-btn"
+          (click)="enableAi()"
+        >
+          Enable local AI (one-time download, runs on your device)
+        </button>
+        <span *ngIf="aiStatus === 'loading'"
+          >Loading model… {{ aiProgressPercent }}%</span
+        >
+        <span *ngIf="aiStatus === 'ready'">Local AI ready.</span>
+        <span *ngIf="aiStatus === 'error'"
+          >AI unavailable, using keyword matching.</span
+        >
+      </ng-container>
+      <ng-template #noModel>
+        <span class="cmdp-hint">
+          Keyword mode. Try "next event", "dark theme", "show axis".
+        </span>
+      </ng-template>
+    </div>
+    <div *ngIf="askBusy" class="cmdp-ask-status">Thinking…</div>
+    <div
+      *ngIf="askOutcome && !askBusy"
+      class="cmdp-ask-result"
+      [class.ok]="askOutcome.ok"
+      [class.err]="!askOutcome.ok"
+    >
+      <span *ngIf="askOutcome.ok"
+        >Ran {{ askOutcome.command
+        }}{{ askOutcome.usedFallback ? ' (keyword)' : '' }}</span
+      >
+      <span *ngIf="!askOutcome.ok">{{ askOutcome.error }}</span>
+    </div>
   </ng-container>
 
   <!-- Parameter form -->

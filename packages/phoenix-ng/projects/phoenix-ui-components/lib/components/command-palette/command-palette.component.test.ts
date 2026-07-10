@@ -40,15 +40,27 @@ function make(
     runOutsideAngular: jest.fn((fn: () => any) => fn()),
     run: jest.fn((fn: () => any) => fn()),
   };
+  const nl: any = {
+    ask: jest.fn(async () => ({
+      ok: true,
+      command: 'set-theme',
+      usedFallback: true,
+    })),
+    isModelAvailable: jest.fn(() => false),
+    enableModel: jest.fn(async () => undefined),
+    status: 'idle',
+    progress: { progress: 0, text: '' },
+  };
   const c = new CommandPaletteComponent(
     eventDisplay,
     cdr,
     notify,
     elementRef,
     ngZone,
+    nl,
   );
   c.ngOnInit();
-  return { c, registry, notify, host, ngZone };
+  return { c, registry, notify, host, ngZone, nl };
 }
 
 const key = (over: any) =>
@@ -269,5 +281,75 @@ describe('CommandPaletteComponent (choose, params, run)', () => {
     await c.choose(c.filtered.find((x) => x.name === 'next-event')!);
     expect(notify.error).toHaveBeenCalledWith('boom');
     expect(c.open).toBe(false);
+  });
+});
+
+describe('CommandPaletteComponent (ask / natural-language mode)', () => {
+  it('switches to ask mode and clears any previous outcome', () => {
+    const { c } = make();
+    c.openPalette();
+    c.askOutcome = { ok: true } as any;
+    c.setMode('ask');
+    expect(c.mode).toBe('ask');
+    expect(c.askOutcome).toBeNull();
+  });
+
+  it('runAsk delegates to the NL service and stores the outcome', async () => {
+    const { c, nl } = make();
+    c.openPalette();
+    c.setMode('ask');
+    c.askText = 'switch to dark theme';
+    await c.runAsk();
+    expect(nl.ask).toHaveBeenCalledWith('switch to dark theme');
+    expect(c.askOutcome?.ok).toBe(true);
+    expect(c.askBusy).toBe(false);
+  });
+
+  it('clears the input after a successful ask, keeps it after a failure', async () => {
+    const { c, nl } = make();
+    c.openPalette();
+    c.setMode('ask');
+    c.askText = 'do a thing';
+    await c.runAsk();
+    expect(c.askText).toBe(''); // success clears
+
+    nl.ask.mockResolvedValueOnce({ ok: false, error: 'no match', none: true });
+    c.askText = 'gibberish';
+    await c.runAsk();
+    expect(c.askText).toBe('gibberish'); // failure keeps text for editing
+    expect(c.askOutcome?.ok).toBe(false);
+  });
+
+  it('ignores an empty/whitespace request (no service call)', async () => {
+    const { c, nl } = make();
+    c.openPalette();
+    c.setMode('ask');
+    c.askText = '   ';
+    await c.runAsk();
+    expect(nl.ask).not.toHaveBeenCalled();
+  });
+
+  it('does not drive the command list with Arrow/Enter while in ask mode', () => {
+    const { c } = make();
+    c.openPalette();
+    c.setMode('ask');
+    c.selectedIndex = 0;
+    c.onDocumentKeydown(key({ key: 'ArrowDown' }));
+    c.onDocumentKeydown(key({ key: 'Enter' }));
+    expect(c.selectedIndex).toBe(0); // unchanged; ask input owns these keys
+  });
+
+  it('enableAi opts in through the NL service', async () => {
+    const { c, nl } = make();
+    await c.enableAi();
+    expect(nl.enableModel).toHaveBeenCalled();
+  });
+
+  it('exposes model availability and status from the service', () => {
+    const { c, nl } = make();
+    expect(c.aiModelAvailable).toBe(false);
+    nl.isModelAvailable.mockReturnValue(true);
+    expect(c.aiModelAvailable).toBe(true);
+    expect(c.aiStatus).toBe('idle');
   });
 });

@@ -13,6 +13,10 @@ import type {
 } from 'phoenix-event-display';
 import { EventDisplayService } from '../../services/event-display.service';
 import { NotificationService } from '../../services/notification.service';
+import {
+  NaturalLanguageService,
+  type NlOutcome,
+} from '../../services/natural-language.service';
 
 /**
  * Keyboard-triggered command palette (#942). Opens on Ctrl/Cmd+K, lists the
@@ -50,6 +54,15 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
    */
   formFields: { name: string; prop: CommandProperty; options: string[] }[] = [];
 
+  /** Current panel mode: pick from the list, or ask in natural language. */
+  mode: 'commands' | 'ask' = 'commands';
+  /** The natural-language request being typed in ask mode. */
+  askText = '';
+  /** True while a request is being interpreted/run. */
+  askBusy = false;
+  /** The last ask outcome (interpreted command + result, or an error). */
+  askOutcome: NlOutcome | null = null;
+
   private registry!: CommandRegistry;
   private keydownHandler = (e: KeyboardEvent) => this.onDocumentKeydown(e);
   private mousedownHandler = (e: MouseEvent) => this.onDocMouseDown(e);
@@ -68,6 +81,7 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     private notification: NotificationService,
     private elementRef: ElementRef<HTMLElement>,
     private ngZone: NgZone,
+    private nl: NaturalLanguageService,
   ) {}
 
   /**
@@ -115,8 +129,9 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
       this.close();
       return;
     }
-    // While a parameter form is open, let its inputs handle keys.
-    if (this.activeCommand) return;
+    // In ask mode, or while a parameter form is open, let the inputs handle
+    // keys (the ask box runs the request on its own Enter binding).
+    if (this.mode === 'ask' || this.activeCommand) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       this.selectedIndex = Math.min(
@@ -164,6 +179,10 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     this.activeCommand = null;
     this.formFields = [];
     this.selectedIndex = 0;
+    this.mode = 'commands';
+    this.askText = '';
+    this.askOutcome = null;
+    this.askBusy = false;
     this.filtered = this.registry.list();
     this.cdr.detectChanges();
   }
@@ -173,6 +192,63 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     this.open = false;
     this.activeCommand = null;
     this.formFields = [];
+    this.askOutcome = null;
+    this.askBusy = false;
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Switch between picking a command from the list and asking in natural
+   * language. Clears the last ask result when entering ask mode.
+   * @param mode The mode to switch to.
+   */
+  setMode(mode: 'commands' | 'ask'): void {
+    this.mode = mode;
+    this.askOutcome = null;
+    this.cdr.detectChanges();
+  }
+
+  /** Whether an in-browser model can be offered (app-provided + WebGPU). */
+  get aiModelAvailable(): boolean {
+    return this.nl.isModelAvailable();
+  }
+
+  /** The natural-language service status (idle/loading/ready/thinking/error). */
+  get aiStatus(): string {
+    return this.nl.status;
+  }
+
+  /** Model-load progress as a 0..100 integer, for the progress label. */
+  get aiProgressPercent(): number {
+    return Math.round((this.nl.progress?.progress ?? 0) * 100);
+  }
+
+  /** Opt in to the in-browser model (lazy one-time load). */
+  async enableAi(): Promise<void> {
+    try {
+      await this.nl.enableModel();
+    } catch {
+      /* status/lastError already set by the service; UI shows the fallback */
+    }
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Interpret and run the typed natural-language request. Delegates to the
+   * natural-language service (model when available, else keyword fallback),
+   * which only ever runs a registered, schema-validated command. Keeps the
+   * panel open so the outcome is visible and follow-up requests are easy.
+   */
+  async runAsk(): Promise<void> {
+    const text = this.askText.trim();
+    if (!text || this.askBusy) return;
+    this.askBusy = true;
+    this.askOutcome = null;
+    this.cdr.detectChanges();
+    const outcome = await this.nl.ask(text);
+    this.askBusy = false;
+    this.askOutcome = outcome;
+    if (outcome.ok) this.askText = '';
     this.cdr.detectChanges();
   }
 
