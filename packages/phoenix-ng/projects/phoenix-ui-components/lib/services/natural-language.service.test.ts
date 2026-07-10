@@ -68,6 +68,16 @@ describe('NaturalLanguageService (fallback path, no model)', () => {
     expect(calls.setDarkTheme).toHaveBeenCalledWith(true);
   });
 
+  it('interpret() maps a request WITHOUT executing it (side-effect-free dry run)', async () => {
+    const { registry, calls } = makeRegistry();
+    const svc = makeService(registry);
+    const out = await svc.interpret('switch to dark theme');
+    expect(out.ok).toBe(true);
+    expect(out.command).toBe('set-theme');
+    expect(out.usedFallback).toBe(true);
+    expect(calls.setDarkTheme).not.toHaveBeenCalled();
+  });
+
   it('reports a no-match (without firing anything) for an unmappable request', async () => {
     const { registry, calls } = makeRegistry();
     const svc = makeService(registry);

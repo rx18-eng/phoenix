@@ -187,15 +187,16 @@ export class NaturalLanguageService {
   }
 
   /**
-   * Interpret and run a natural-language request. Uses the loaded model when
-   * present (constrained decoding), otherwise the deterministic keyword
-   * fallback; on model error it degrades to the fallback rather than failing.
-   * The proposed command is always validated against the registry before it
-   * runs, so an unregistered or malformed action can never fire.
+   * Interpret a request into a validated command WITHOUT running it (a dry-run
+   * preview). Uses the loaded model (constrained decoding), else the keyword
+   * fallback; degrades to the fallback on model error. The proposed command is
+   * validated against the registry, so `ok` means a real, registered command
+   * was chosen. Runs no command and has no side effects, so it is also what an
+   * evaluation harness uses to measure mapping accuracy.
    * @param text The user's request.
-   * @returns The outcome (ran / no-match / error), with which path was used.
+   * @returns The mapped command + args, or a no-match / error.
    */
-  async ask(text: string): Promise<NlOutcome> {
+  async interpret(text: string): Promise<NlOutcome> {
     const registry = this.eventDisplay.getCommandRegistry();
     const tools = registry.toToolSchemas();
     let parsed: unknown = null;
@@ -240,25 +241,32 @@ export class NaturalLanguageService {
           : failed.error,
       };
     }
-
-    const res = await registry.execute(intent.command, intent.args);
-    if (!res.ok) {
-      const failed = res as { ok: false; error: string };
-      return {
-        ok: false,
-        command: intent.command,
-        args: intent.args,
-        usedFallback,
-        error: failed.error,
-      };
-    }
     return {
       ok: true,
       command: intent.command,
       args: intent.args,
-      result: res.result,
       usedFallback,
     };
+  }
+
+  /**
+   * Interpret AND run a natural-language request: the same validated
+   * `registry.execute()` path the command palette uses, so an unregistered or
+   * malformed action can never fire.
+   * @param text The user's request.
+   * @returns The outcome (ran / no-match / error), with which path was used.
+   */
+  async ask(text: string): Promise<NlOutcome> {
+    const outcome = await this.interpret(text);
+    if (!outcome.ok || !outcome.command) return outcome;
+    const res = await this.eventDisplay
+      .getCommandRegistry()
+      .execute(outcome.command, outcome.args ?? {});
+    if (!res.ok) {
+      const failed = res as { ok: false; error: string };
+      return { ...outcome, ok: false, error: failed.error };
+    }
+    return { ...outcome, result: (res as { result?: any }).result };
   }
 
   /**
