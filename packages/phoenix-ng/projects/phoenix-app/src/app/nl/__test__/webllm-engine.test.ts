@@ -1,4 +1,42 @@
-import { WebLlmEngine, isWebGpuAvailable } from '../webllm-engine';
+import {
+  WebLlmEngine,
+  isWebGpuAvailable,
+  loadOrder,
+  NL_MODEL_LADDER,
+  DEFAULT_NL_MODEL,
+  HIGH_ACCURACY_MODEL,
+} from '../webllm-engine';
+
+describe('model fallback ladder', () => {
+  it('defaults to the safe (watchdog-friendly) model, not the largest', () => {
+    // The default must keep each inference short enough to dodge the ~2 s GPU
+    // watchdog, so it is the 1.5B, NOT the 3B accuracy option.
+    expect(DEFAULT_NL_MODEL).toContain('1.5B');
+    expect(HIGH_ACCURACY_MODEL).toContain('3B');
+    expect(DEFAULT_NL_MODEL).not.toBe(HIGH_ACCURACY_MODEL);
+  });
+
+  it('ladder starts at the default and shrinks to a run-anywhere model', () => {
+    expect(NL_MODEL_LADDER[0]).toBe(DEFAULT_NL_MODEL);
+    expect(NL_MODEL_LADDER[NL_MODEL_LADDER.length - 1]).toContain('1B');
+  });
+
+  it('loadOrder puts the preferred model first, then the rest, de-duplicated', () => {
+    const order = loadOrder(DEFAULT_NL_MODEL);
+    expect(order[0]).toBe(DEFAULT_NL_MODEL);
+    // no duplicates even though the preferred model is on the ladder
+    expect(new Set(order).size).toBe(order.length);
+    expect(order).toEqual(NL_MODEL_LADDER);
+  });
+
+  it('the opt-in 3B still degrades through the ladder on load failure', () => {
+    const order = loadOrder(HIGH_ACCURACY_MODEL);
+    expect(order[0]).toBe(HIGH_ACCURACY_MODEL);
+    // falls back to the smaller models rather than dying outright
+    for (const m of NL_MODEL_LADDER) expect(order).toContain(m);
+    expect(new Set(order).size).toBe(order.length);
+  });
+});
 
 describe('isWebGpuAvailable', () => {
   const original = (navigator as any).gpu;

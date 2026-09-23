@@ -3,13 +3,53 @@ import type { NlEngine } from 'phoenix-ui-components';
 
 /**
  * Default in-browser model for natural-language command mapping. Constrained
- * decoding guarantees the output is a VALID command, but picking the RIGHT
- * command from intent still needs a capable model: a 1.5B instruct model is a
- * good accuracy/size balance (the 0.5B mis-mapped requests like "hide the
- * calorimeter"). Weaker devices that cannot load it degrade to the keyword
- * fallback. Overridable via createWebLlmEngineFactory(modelId).
+ * decoding guarantees the output is a VALID command; picking the RIGHT one
+ * still needs a capable model, but bigger is NOT strictly better here. Model
+ * inference and Phoenix's WebGL render loop share one GPU: a compute pass that
+ * runs longer than the OS's ~2 s GPU-watchdog window (Windows TDR) makes the
+ * driver reset the device (the "Invalid CommandBuffer" cascade + a ~2 s black
+ * canvas). A 1.5B model keeps each inference short enough to stay under that
+ * window on typical laptop GPUs, while still far outdoing the 0.5B that
+ * mis-mapped "hide the calorimeter". Accuracy is lifted instead by the prompt
+ * (disambiguation + dynamic few-shot) and, for strong GPUs, the opt-in 3B
+ * ({@link HIGH_ACCURACY_MODEL}). Overridable via createWebLlmEngineFactory().
  */
 export const DEFAULT_NL_MODEL = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
+
+/**
+ * Opt-in higher-accuracy model for machines with a strong (usually discrete)
+ * GPU. ~2.5 GB VRAM (q4f16_1) and a longer inference, so it is more likely to
+ * trip the 2 s GPU watchdog on weak/integrated GPUs; offered as a choice, never
+ * the default. Selecting it still degrades through the ladder below on load
+ * failure.
+ */
+export const HIGH_ACCURACY_MODEL = 'Qwen2.5-3B-Instruct-q4f16_1-MLC';
+
+/**
+ * Ordered fallback ladder tried when the requested model fails to LOAD (a weak
+ * or low-memory GPU throws). Each rung is smaller/lighter than the last, ending
+ * at a ~0.9 GB model that runs almost anywhere WebGPU does; below this the
+ * service degrades to the deterministic keyword fallback. VRAM (q4f16_1):
+ * 1.5B ~1.6 GB, 1B ~0.9 GB. (This is a load-failure degrade path, not the
+ * inference-time watchdog issue, which the render-pause mitigation addresses.)
+ */
+export const NL_MODEL_LADDER = [
+  'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+  'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+];
+
+/**
+ * The models to try, in order: the preferred model first, then the rest of the
+ * fallback ladder (smaller each step) for GPUs that cannot fit the accuracy
+ * pick. De-duplicated so a preferred model already on the ladder is not
+ * retried. Kept here (not in the provider) so it stays free of `import.meta`
+ * and therefore unit-testable.
+ * @param modelId The preferred model id.
+ * @returns Ordered, de-duplicated model ids to attempt.
+ */
+export function loadOrder(modelId: string): string[] {
+  return [modelId, ...NL_MODEL_LADDER.filter((m) => m !== modelId)];
+}
 
 /**
  * Whether this browser can actually run WebLLM: WebGPU must be present AND
