@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { OverlayModule } from '@angular/cdk/overlay';
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { CdkTreeModule } from '@angular/cdk/tree';
 
@@ -81,6 +82,7 @@ import {
   MasterclassPanelOverlayComponent,
   SessionPillComponent,
   CommandPaletteComponent,
+  CommandPaletteToggleComponent,
 } from './ui-menu';
 
 import { AttributePipe } from '../services/extras/attribute.pipe';
@@ -163,6 +165,7 @@ const PHOENIX_COMPONENTS: Type<any>[] = [
   SessionPillComponent,
   ShortcutsDialogComponent,
   CommandPaletteComponent,
+  CommandPaletteToggleComponent,
 ];
 
 @NgModule({
@@ -177,6 +180,7 @@ const PHOENIX_COMPONENTS: Type<any>[] = [
     MatButtonModule,
     MatTooltipModule,
     OverlayModule,
+    CdkTrapFocus, // standalone; keeps Tab inside the command palette dialog
     FormsModule,
     ReactiveFormsModule,
     MatMenuModule,

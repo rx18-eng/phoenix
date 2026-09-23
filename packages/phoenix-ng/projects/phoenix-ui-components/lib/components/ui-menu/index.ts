@@ -52,3 +52,4 @@ export * from './masterclass-panel/masterclass-panel.component';
 export * from './masterclass-panel/masterclass-panel-overlay/masterclass-panel-overlay.component';
 export * from '../session-pill/session-pill.component';
 export * from '../command-palette/command-palette.component';
+export * from './command-palette-toggle/command-palette-toggle.component';

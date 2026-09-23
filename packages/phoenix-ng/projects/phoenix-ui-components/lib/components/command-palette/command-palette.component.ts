@@ -11,18 +11,20 @@ import type {
   CommandProperty,
   CommandRegistry,
 } from 'phoenix-event-display';
+import type { Subscription } from 'rxjs';
 import { EventDisplayService } from '../../services/event-display.service';
 import { NotificationService } from '../../services/notification.service';
 import {
   NaturalLanguageService,
   type NlOutcome,
 } from '../../services/natural-language.service';
+import { CommandPaletteService } from '../../services/command-palette.service';
 
 /**
- * Keyboard-triggered command palette (#942). Opens on Ctrl/Cmd+K, lists the
- * registered commands, prompts for parameters from each command's inputSchema,
- * and runs them through the command registry. Icon-less and self-hiding, so it
- * adds zero toolbar footprint and works even when the toolbar is hidden.
+ * Command palette (#942). Opens on Ctrl/Cmd+K or from the toolbar button (via
+ * {@link CommandPaletteService}), lists the registered commands, prompts for
+ * parameters from each command's inputSchema, and runs them through the command
+ * registry. Self-hiding, so it works even when the toolbar is hidden.
  */
 @Component({
   standalone: false,
@@ -62,10 +64,33 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
   askBusy = false;
   /** The last ask outcome (interpreted command + result, or an error). */
   askOutcome: NlOutcome | null = null;
+  /**
+   * True after an empty Ask was submitted, so the panel shows a gentle hint
+   * instead of ignoring the Enter press. Cleared once the user types.
+   */
+  askNeedsText = false;
+  /**
+   * Prefix of each command option's element id. The combobox points
+   * aria-activedescendant at `optionIdPrefix + selectedIndex` and keyboard
+   * scrolling looks up the same id, so the two can never drift apart.
+   */
+  readonly optionIdPrefix = 'cmdp-option-';
 
   private registry!: CommandRegistry;
   private keydownHandler = (e: KeyboardEvent) => this.onDocumentKeydown(e);
   private mousedownHandler = (e: MouseEvent) => this.onDocMouseDown(e);
+  private openSub?: Subscription;
+  /**
+   * Element that had focus before the palette opened. Focus goes back there on
+   * close (APG modal dialog pattern), so a keyboard user lands where they were
+   * instead of on the page body.
+   */
+  private returnFocusTo: HTMLElement | null = null;
+  /**
+   * Set in ngOnDestroy. A model download or an ask can settle seconds after the
+   * palette is gone, and detectChanges on a destroyed view throws.
+   */
+  private destroyed = false;
 
   /**
    * @param eventDisplay The Phoenix event display service.
@@ -82,6 +107,7 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     private elementRef: ElementRef<HTMLElement>,
     private ngZone: NgZone,
     private nl: NaturalLanguageService,
+    private commandPalette: CommandPaletteService,
   ) {}
 
   /**
@@ -99,12 +125,19 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
       document.addEventListener('keydown', this.keydownHandler);
       document.addEventListener('mousedown', this.mousedownHandler);
     });
+    // Toolbar button (or any other UI) can request the palette open. This fires
+    // from an in-zone click, so openPalette's detectChanges renders normally.
+    this.openSub = this.commandPalette.openRequested.subscribe(() =>
+      this.openPalette(),
+    );
   }
 
-  /** Remove the global listeners. */
+  /** Remove the global listeners and the open subscription. */
   ngOnDestroy(): void {
+    this.destroyed = true;
     document.removeEventListener('keydown', this.keydownHandler);
     document.removeEventListener('mousedown', this.mousedownHandler);
+    this.openSub?.unsubscribe();
   }
 
   /**
@@ -132,6 +165,15 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     // In ask mode, or while a parameter form is open, let the inputs handle
     // keys (the ask box runs the request on its own Enter binding).
     if (this.mode === 'ask' || this.activeCommand) return;
+    // The list is driven through the search combobox. With focus on a mode tab
+    // (or any other control) Enter must activate that control, not run
+    // whichever command happens to be highlighted.
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.matches?.('button, a, select, textarea, input:not(.cmdp-input)')
+    ) {
+      return;
+    }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       this.selectedIndex = Math.min(
@@ -139,10 +181,12 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
         this.filtered.length - 1,
       );
       this.cdr.detectChanges();
+      this.scrollSelectedIntoView();
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
       this.cdr.detectChanges();
+      this.scrollSelectedIntoView();
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const cmd = this.filtered[this.selectedIndex];
@@ -172,8 +216,16 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     else this.openPalette();
   }
 
-  /** Open the palette, resetting query and selection. */
+  /**
+   * Open the palette, resetting query and selection, and move focus into the
+   * search input so the shortcut can be followed straight by typing.
+   */
   openPalette(): void {
+    // Only record the return target on a real open. A second open request
+    // while already open would otherwise record an element inside the panel.
+    if (!this.open) {
+      this.returnFocusTo = document.activeElement as HTMLElement | null;
+    }
     this.open = true;
     this.query = '';
     this.activeCommand = null;
@@ -183,29 +235,43 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     this.askText = '';
     this.askOutcome = null;
     this.askBusy = false;
+    this.askNeedsText = false;
     this.filtered = this.registry.list();
     this.cdr.detectChanges();
+    this.focusFirstControl();
   }
 
-  /** Close the palette and clear transient state. */
+  /**
+   * Close the palette, clear transient state, and return focus to the element
+   * that had it before the palette opened.
+   */
   close(): void {
+    const wasOpen = this.open;
     this.open = false;
     this.activeCommand = null;
     this.formFields = [];
     this.askOutcome = null;
     this.askBusy = false;
     this.cdr.detectChanges();
+    if (wasOpen) this.restoreFocus();
   }
 
   /**
    * Switch between picking a command from the list and asking in natural
-   * language. Clears the last ask result when entering ask mode.
+   * language. Clears the last ask result and moves focus into the input the
+   * new mode shows.
    * @param mode The mode to switch to.
    */
   setMode(mode: 'commands' | 'ask'): void {
+    // The tabs are hidden while a parameter form is open, but a programmatic
+    // switch must not leave the form and the new mode active at once.
+    this.activeCommand = null;
+    this.formFields = [];
     this.mode = mode;
     this.askOutcome = null;
+    this.askNeedsText = false;
     this.cdr.detectChanges();
+    this.focusFirstControl();
   }
 
   /** Whether an in-browser model can be offered (app-provided + WebGPU). */
@@ -230,7 +296,7 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     } catch {
       /* status/lastError already set by the service; UI shows the fallback */
     }
-    this.cdr.detectChanges();
+    this.render();
   }
 
   /**
@@ -238,18 +304,94 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
    * natural-language service (model when available, else keyword fallback),
    * which only ever runs a registered, schema-validated command. Keeps the
    * panel open so the outcome is visible and follow-up requests are easy.
+   * Never rejects: it is called un-awaited from the template, so a failure is
+   * shown in the outcome instead.
    */
   async runAsk(): Promise<void> {
+    if (this.askBusy) return;
     const text = this.askText.trim();
-    if (!text || this.askBusy) return;
+    if (!text) {
+      // Enter on an empty box used to do nothing at all, which reads as broken.
+      this.askNeedsText = true;
+      this.render();
+      return;
+    }
+    this.askNeedsText = false;
     this.askBusy = true;
     this.askOutcome = null;
-    this.cdr.detectChanges();
-    const outcome = await this.nl.ask(text);
-    this.askBusy = false;
+    this.render();
+    let outcome: NlOutcome;
+    try {
+      outcome = await this.nl.ask(text);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      outcome = {
+        ok: false,
+        error: `Sorry, something went wrong (${detail}). Please try again.`,
+      };
+    } finally {
+      // Without this a rejection left askBusy stuck, and the single-flight
+      // guard above then ignored every later Enter.
+      this.askBusy = false;
+    }
     this.askOutcome = outcome;
     if (outcome.ok) this.askText = '';
-    this.cdr.detectChanges();
+    this.render();
+  }
+
+  /**
+   * Run the command the student was offered as "did you mean ...?". Only ever
+   * reached by an explicit click, which is the whole point: a mistyped command
+   * is proposed, never executed on a guess.
+   * @param suggestion The proposed command and arguments.
+   */
+  async runSuggestion(suggestion: {
+    command: string;
+    args: Record<string, any>;
+    label: string;
+  }): Promise<void> {
+    const res = await this.registry.execute(
+      suggestion.command,
+      suggestion.args,
+    );
+    this.askOutcome = res.ok
+      ? { ok: true, command: suggestion.command, usedFallback: true }
+      : {
+          ok: false,
+          error: (res as { error?: string }).error ?? 'Command failed',
+        };
+    this.render();
+  }
+
+  /**
+   * Ask about a related topic from an answer card (a one-click follow-up).
+   * @param title The related topic's title.
+   */
+  askAbout(title: string): void {
+    this.askText = 'what is ' + title;
+    this.runAsk();
+  }
+
+  /**
+   * Run the suggested action from an answer card. The action is a registered
+   * command (validated when the knowledge base is built), executed through the
+   * same registry path as everything else. The panel stays open so the student
+   * sees the effect and can keep exploring.
+   * @param action The command + args + label suggested by the answer.
+   */
+  async runAnswerAction(action: {
+    command: string;
+    args?: Record<string, any>;
+    label: string;
+  }): Promise<void> {
+    const res = await this.registry.execute(action.command, action.args ?? {});
+    this.askOutcome = res.ok
+      ? { ok: true, command: action.command, usedFallback: true }
+      : {
+          ok: false,
+          error: (res as { error?: string }).error ?? 'Command failed',
+        };
+    this.render();
   }
 
   /**
@@ -268,6 +410,11 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
       );
     });
     this.selectedIndex = 0;
+    // The highlight jumps back to the first match. A list scrolled down by
+    // earlier arrow presses would hide the command Enter now runs.
+    const list =
+      this.elementRef.nativeElement.querySelector<HTMLElement>('.cmdp-list');
+    if (list) list.scrollTop = 0;
   }
 
   /**
@@ -291,6 +438,8 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
       return { name, prop, options: this.optionsFor(prop) };
     });
     this.cdr.detectChanges();
+    // The list (and the input that had focus) is gone; start at field one.
+    this.focusFirstControl();
   }
 
   /** trackBy for the form fields: param names are unique within a command. */
@@ -298,11 +447,12 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
     return field.name;
   }
 
-  /** Leave the parameter form and return to the command list. */
+  /** Leave the parameter form and return focus to the command search. */
   back(): void {
     this.activeCommand = null;
     this.formFields = [];
     this.cdr.detectChanges();
+    this.focusFirstControl();
   }
 
   /**
@@ -372,5 +522,65 @@ export class CommandPaletteComponent implements OnInit, OnDestroy {
         this.notification.error(failure.error ?? 'Command failed'),
       );
     }
+  }
+
+  /**
+   * Re-render after async work (an ask, a model download, an answer-card
+   * action). Skips a destroyed view, and pulls focus back into the dialog when
+   * the re-render removed the button that had it.
+   */
+  private render(): void {
+    if (this.destroyed) return;
+    this.cdr.detectChanges();
+    this.keepFocusInside();
+  }
+
+  /**
+   * Focus the first form control the current view renders: the search or ask
+   * input, or the first parameter field. Needed after any render that swaps
+   * views, since *ngIf destroys the focused element and focus would otherwise
+   * fall to the page body, outside the dialog.
+   */
+  private focusFirstControl(): void {
+    if (!this.open || this.destroyed) return;
+    this.elementRef.nativeElement
+      .querySelector<HTMLElement>('input, select')
+      ?.focus();
+  }
+
+  /** Refocus the dialog's first control if focus has fallen out of it. */
+  private keepFocusInside(): void {
+    if (!this.open) return;
+    if (!this.elementRef.nativeElement.contains(document.activeElement)) {
+      this.focusFirstControl();
+    }
+  }
+
+  /**
+   * Return focus to where it was before the palette opened, unless that
+   * element has since left the page or was just the body.
+   */
+  private restoreFocus(): void {
+    const target = this.returnFocusTo;
+    this.returnFocusTo = null;
+    if (
+      target &&
+      target !== document.body &&
+      target.isConnected &&
+      !this.elementRef.nativeElement.contains(target)
+    ) {
+      target.focus?.();
+    }
+  }
+
+  /**
+   * Keep the highlighted option visible. The list scrolls (only about 5 of 16
+   * commands fit at 800x600), so without this Enter could run a command the
+   * user cannot see.
+   */
+  private scrollSelectedIntoView(): void {
+    this.elementRef.nativeElement
+      .querySelector(`#${this.optionIdPrefix}${this.selectedIndex}`)
+      ?.scrollIntoView({ block: 'nearest' });
   }
 }
