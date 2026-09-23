@@ -107,6 +107,60 @@ describe('nl-intent: buildSystemPrompt', () => {
       buildSystemPrompt(tools, { collections: ['Tracks', 'Hits'] }),
     ).toContain('Tracks|Hits');
   });
+
+  it('tells the model that "rotate to a view" is preset-view, not auto-rotate', () => {
+    const prompt = buildSystemPrompt(reg().toToolSchemas());
+    // an explicit disambiguation rule for the word that mis-fired in the wild
+    expect(prompt).toMatch(/preset-view/);
+    expect(prompt.toLowerCase()).toContain('auto-rotate');
+    // the rule names both intents in one place so the model can contrast them
+    const ruleLine = prompt
+      .split('\n')
+      .find((l) => /rotate to/i.test(l) && /preset-view/.test(l));
+    expect(ruleLine).toBeTruthy();
+  });
+
+  it('adds a live "rotate to <a real view>" example when preset views are supplied', () => {
+    const prompt = buildSystemPrompt(reg().toToolSchemas(), {
+      presetViews: ['Left View', 'Center View', 'Right View'],
+    });
+    // uses a REAL preset value (constrained-decoding will only allow real ones)
+    expect(prompt).toContain('"command":"preset-view"');
+    expect(prompt).toContain('Left View');
+  });
+
+  describe('dynamic (retrieval) few-shot', () => {
+    it('adds the extended example most similar to the live query', () => {
+      const tools = reg().toToolSchemas();
+      const offExample = 'user: stop rotating';
+      // not present in the fixed base prompt...
+      expect(buildSystemPrompt(tools)).not.toContain(offExample);
+      // ...but pulled in when the request is about stopping rotation
+      expect(
+        buildSystemPrompt(tools, undefined, 'stop rotating the detector'),
+      ).toContain(offExample);
+    });
+
+    it('selects by relevance: a zoom query pulls the zoom example, not muons', () => {
+      const tools = reg().toToolSchemas();
+      const prompt = buildSystemPrompt(tools, undefined, 'zoom in closer');
+      expect(prompt).toContain('user: zoom in closer');
+      expect(prompt).not.toContain('muon spectrometer');
+    });
+
+    it('keeps the base prompt fixed (no extended examples) without a query', () => {
+      const tools = reg().toToolSchemas();
+      const base = buildSystemPrompt(tools);
+      expect(base).not.toContain('user: stop rotating');
+      expect(base).not.toContain('user: zoom in closer');
+    });
+
+    it('never throws on an empty or unmatched query', () => {
+      const tools = reg().toToolSchemas();
+      expect(() => buildSystemPrompt(tools, undefined, '')).not.toThrow();
+      expect(() => buildSystemPrompt(tools, undefined, 'qwzx')).not.toThrow();
+    });
+  });
 });
 
 describe('nl-intent: validateIntent', () => {
@@ -186,6 +240,37 @@ describe('nl-intent: keywordFallback (deterministic, no model)', () => {
   it('returns null (never guesses) for an unmappable request', () => {
     expect(keywordFallback('make me a sandwich')).toBeNull();
     expect(keywordFallback('')).toBeNull();
+  });
+
+  // Regression: the word "rotate" collided between auto-rotate (spin the scene)
+  // and "rotate to a view" (a one-off camera move). A weak model AND this
+  // fallback both mis-fired auto-rotate for "rotate to the transverse view".
+  describe('does not confuse "rotate to a view" with auto-rotate (spin)', () => {
+    const spins: string[] = [
+      'spin the detector',
+      'auto rotate',
+      'auto-rotate the view',
+      'start spinning',
+      'keep rotating the scene',
+      'rotate the detector',
+    ];
+    for (const text of spins) {
+      it(`"${text}" -> toggle-auto-rotate`, () => {
+        expect(keywordFallback(text)?.command).toBe('toggle-auto-rotate');
+      });
+    }
+
+    const notSpins: string[] = [
+      'rotate to the transverse view',
+      'rotate to the front view',
+      'show the two muons and rotate to the transverse view',
+      'rotate towards the side view',
+    ];
+    for (const text of notSpins) {
+      it(`"${text}" is NOT auto-rotate (pure fallback returns none)`, () => {
+        expect(keywordFallback(text)?.command).not.toBe('toggle-auto-rotate');
+      });
+    }
   });
 
   it('every fallback intent it produces validates against the registry', () => {
