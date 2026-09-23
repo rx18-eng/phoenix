@@ -13,6 +13,7 @@ import { CMSComponent } from './sections/cms/cms.component';
 import { TrackmlComponent } from './sections/trackml/trackml.component';
 import {
   PhoenixUIModule,
+  provideAgentBridge,
   NL_ENGINE_FACTORY,
   type NlEngine,
   type NlEngineFactory,
@@ -74,6 +75,13 @@ const routes: Routes = [
           m.createWebLlmEngineFactory()(onProgress),
         )) as NlEngineFactory,
     },
+    // Agent bridge (#942/#826), owned by the application rather than by any
+    // component: it is one listener over the one root event display, so it has
+    // to outlive every route change and must not depend on the command palette
+    // being rendered. It stays dormant unless this page was opened with the
+    // loopback-only ?agent=1 switch; a deployment that wants a known embedder
+    // to drive it passes origins here instead.
+    provideAgentBridge(),
   ],
   bootstrap: [AppComponent],
 })

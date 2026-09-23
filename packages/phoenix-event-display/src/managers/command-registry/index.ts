@@ -4,3 +4,6 @@ export * from './schema-validator';
 export * from './command-registry';
 export * from './default-commands';
 export * from './nl-intent';
+export * from './enum-sources';
+export * from './knowledge-base';
+export * from './agent-bridge';
