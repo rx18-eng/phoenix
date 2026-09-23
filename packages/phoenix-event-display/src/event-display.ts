@@ -326,10 +326,45 @@ export class EventDisplay {
         const object = objects?.[index];
         return object?.uuid ? { uuid: object.uuid } : undefined;
       },
-      // Phase 1 returns an empty list; the command palette (a later phase)
-      // supplies real part names from the live phoenix-menu geometry tree.
-      listGeometryParts: () => [],
+      listGeometryParts: () => this.getGeometryPartNames(),
     };
+  }
+
+  /**
+   * Names of the detector-geometry parts currently in the scene.
+   *
+   * Read live rather than configured, because every experiment has a different
+   * detector: ATLAS, CMS, LHCb and TrackML share no part names. Two things
+   * depend on it. The `part` argument of the geometry command advertises these
+   * as its allowed values, which is what lets an agent reading the tool schema
+   * pick a real one instead of guessing; and the command refuses a name that is
+   * not in this list, rather than reporting success for something it did not
+   * do. Both were inert while this returned an empty list.
+   *
+   * Only the top two levels are returned: those are the parts a person names
+   * ("the calorimeter", "the pixel detector"), while deeper nodes are internal
+   * subdivisions. The result is capped so a large detector tree cannot bloat
+   * the tool schema sent to a model.
+   * @returns Part names, outermost first, without duplicates.
+   */
+  public getGeometryPartNames(): string[] {
+    const names = new Set<string>();
+    try {
+      const geometries = this.getThreeManager()
+        ?.getSceneManager?.()
+        ?.getGeometries?.() as { children?: any[] } | undefined;
+      for (const child of geometries?.children ?? []) {
+        if (child?.name) names.add(child.name);
+        for (const grandChild of child?.children ?? []) {
+          if (grandChild?.name) names.add(grandChild.name);
+        }
+        if (names.size >= 120) break;
+      }
+    } catch {
+      // The scene may not exist yet (called before geometry loads). An empty
+      // list leaves the argument unconstrained, which is the safe direction.
+    }
+    return [...names].slice(0, 120);
   }
 
   /**
