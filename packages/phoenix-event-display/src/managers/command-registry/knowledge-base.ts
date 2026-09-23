@@ -3003,8 +3003,13 @@ export const KNOWLEDGE_BASE: KnowledgeEntry[] = [
   {
     id: 'histogram',
     title: 'Histograms and mass peaks',
-    aliases: ['histogram', 'histograms'],
-    body: 'A histogram counts how many events fall into each range of a quantity. It is the step that turns single events into a measurement: no one event proves anything, but plotting the invariant mass of many events makes a particle show up as a peak standing above a smooth background. Phoenix itself does not draw histograms, it shows one event at a time, so a masterclass builds the histogram from the measurements students record.',
+    aliases: ['histogram', 'histograms', 'histogram panel', 'mass histogram'],
+    body: 'A histogram counts how many events fall into each range of a quantity. It is the step that turns single events into a measurement: no one event proves anything, but plotting the invariant mass of many events makes a particle show up as a peak standing above a smooth background. Phoenix has a histogram panel that builds one as a class works, drawn with JSROOT as a real ROOT histogram: by default invariant mass from 20 to 120 GeV in 50 bins, marking 91.2 GeV so a Z peak is easy to pick out, with the entry count and mean shown alongside.',
+    howto:
+      'Open the histogram panel from the iconbar. It starts empty and fills as you tag particles in the masterclass panel, one entry per result you record. The count and mean update as it fills, and what you have collected is kept in the browser so it survives a reload.',
+    why: "A single event tells you very little. A particle shows up as a bump in a distribution built from many events, so pooling everyone's measurements into one histogram is what makes a resonance such as the Z visible at all.",
+    where:
+      'The histogram panel button in the iconbar (enabled in the masterclass setup).',
     related: [
       'invariant-mass',
       'resonance',

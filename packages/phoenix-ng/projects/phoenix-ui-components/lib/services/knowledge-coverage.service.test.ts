@@ -57,6 +57,7 @@ const FEATURE_TOPICS: Record<string, { topic: string; asked: string }> = {
   'event-selector': { topic: 'event-selector', asked: 'event selector' },
   'experiment-info': { topic: 'experiment-info', asked: 'experiment info' },
   'geometry-browser': { topic: 'geometry-browser', asked: 'geometry browser' },
+  'histogram-panel': { topic: 'histogram', asked: 'histogram panel' },
   'info-panel': { topic: 'info-panel', asked: 'info panel' },
   'io-options': { topic: 'import-export', asked: 'import and export' },
   'kinematics-panel': { topic: 'kinematics', asked: 'kinematics panel' },

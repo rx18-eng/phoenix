@@ -85,9 +85,10 @@ const ABSENT_FEATURES = [
 const ADJACENT_TOPIC_OK = [
   'how do i calibrate the calorimeter',
   'how do i print the event',
-  // Phoenix neither clusters jets nor plots histograms. Both entries say so in
-  // their own text, so surfacing the CONCEPT is honest and useful; what would
-  // be wrong is offering Phoenix steps for either.
+  // Phoenix does not cluster jets, and it does not let you plot an arbitrary
+  // quantity: the histogram panel fills itself from masterclass results and is
+  // not a general plotting tool. Surfacing the CONCEPT is honest and useful;
+  // what would be wrong is offering Phoenix steps for either.
   'how is the jet clustering algorithm implemented',
   'how do i plot a histogram',
 ];
@@ -109,7 +110,6 @@ const IN_SCOPE_PHYSICS = [
 
 /** Absent features with NO vetted answer at all: these must return null. */
 const ABSENT_NO_ANSWER = [
-  'how do i open the histogram panel',
   'how do i run a machine learning model',
   'how do i write a plugin',
   'how do i undo my last action',
@@ -464,9 +464,12 @@ describe('out-of-scope: the tutor must decline, not invent', () => {
   });
 
   it('never claims Phoenix performs analysis it does not perform', () => {
-    // Physics accuracy: a concept entry may explain jet clustering or
-    // histogramming, but it must not leave a student thinking Phoenix does it.
-    for (const id of ['jet-algorithm', 'histogram']) {
+    // Physics accuracy: a concept entry may explain jet clustering, but it must
+    // not leave a student thinking Phoenix does it. `histogram` used to be in
+    // this list; it was removed when the histogram panel landed upstream,
+    // because Phoenix genuinely does draw one now and the old assertion was
+    // asserting a world that no longer exists.
+    for (const id of ['jet-algorithm']) {
       const entry = KNOWLEDGE_BASE.find((e) => e.id === id);
       expect(entry).toBeDefined();
       const text = [entry!.body, entry!.howto, entry!.why, entry!.where]
@@ -480,12 +483,16 @@ describe('out-of-scope: the tutor must decline, not invent', () => {
     }
   });
 
-  it('declines a feature the knowledge base deliberately does not describe', () => {
-    // The histogram panel is not part of this tree, so the tutor must not
-    // describe it. Inventing UI steps is the worst failure mode for a tutor.
-    expect(findKnowledge('how do i use the histogram panel')).toBeNull();
-    const bodies = KNOWLEDGE_BASE.map((e) => e.body.toLowerCase()).join(' ');
-    expect(bodies).not.toContain('histogram panel');
+  it('describes the histogram panel now that it exists, but not other programs', () => {
+    // This assertion used to require the OPPOSITE: the histogram panel did not
+    // exist, so the tutor had to decline. It does exist now, so the useful
+    // property is the boundary, that a real Phoenix panel is explained while a
+    // question about some other program still gets nothing.
+    expect(findKnowledge('how do i use the histogram panel')?.id).toBe(
+      'histogram',
+    );
+    expect(findKnowledge('how do i plot a histogram in excel')).toBeNull();
+    expect(findKnowledge('how do i plot a histogram in root')).toBeNull();
   });
 
   it('vetted text carries no template placeholders or drafting artefacts', () => {
