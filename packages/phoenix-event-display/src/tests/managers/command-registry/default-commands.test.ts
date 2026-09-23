@@ -75,6 +75,13 @@ describe('default commands', () => {
     expect(h.ui.displayView).toHaveBeenCalledWith({ name: 'Front' });
   });
 
+  it('preset-view settles the camera: stops auto-rotate so the view is stable', async () => {
+    const h = host();
+    await reg(h).execute('preset-view', { view: 'Front' });
+    // A named view you can only see if the camera is not still spinning past it.
+    expect(h.ui.setAutoRotate).toHaveBeenCalledWith(false);
+  });
+
   it('highlight-object resolves collection+index to a uuid', async () => {
     const h = host();
     await reg(h).execute('highlight-object', {
@@ -82,6 +89,23 @@ describe('default commands', () => {
       index: 0,
     });
     expect(h.eventDisplay.highlightObject).toHaveBeenCalledWith('u0');
+  });
+
+  it('look-at-object focuses the object AND stops auto-rotate so it stays framed', async () => {
+    const h = host();
+    await reg(h).execute('look-at-object', { collection: 'Tracks', index: 0 });
+    expect(h.eventDisplay.lookAtObject).toHaveBeenCalledWith('u0');
+    // "Look at THIS" is pointless if the camera keeps orbiting away from it.
+    expect(h.ui.setAutoRotate).toHaveBeenCalledWith(false);
+  });
+
+  it('highlight-object does NOT stop auto-rotate (it does not move the camera)', async () => {
+    const h = host();
+    await reg(h).execute('highlight-object', {
+      collection: 'Tracks',
+      index: 0,
+    });
+    expect(h.ui.setAutoRotate).not.toHaveBeenCalled();
   });
 
   it('highlight-object fails when the object is missing', async () => {

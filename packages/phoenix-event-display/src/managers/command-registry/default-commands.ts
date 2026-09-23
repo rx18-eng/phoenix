@@ -71,7 +71,29 @@ export function defaultCommands(): Command[] {
         additionalProperties: false,
       },
       mutates: true,
-      run: (a, h) => h.eventDisplay.loadEvent(a.eventKey),
+      run: (a, h) => {
+        // EventDisplay.loadEvent silently ignores a key it does not hold, so an
+        // unknown key used to report success and change nothing, which an
+        // agent that cannot see the display takes as done. Refuse instead, and
+        // name a few real keys so the caller can correct itself. A host that
+        // cannot list its events is left permissive, as with geometry parts.
+        const getEventsData = h.eventDisplay?.getEventsData;
+        if (typeof getEventsData === 'function') {
+          const keys = Object.keys(getEventsData.call(h.eventDisplay) ?? {});
+          if (!keys.includes(a.eventKey)) {
+            const asked = String(a.eventKey).slice(0, 80);
+            if (!keys.length) {
+              throw new Error(`no event '${asked}': no events are loaded`);
+            }
+            const more =
+              keys.length > 10 ? ` and ${keys.length - 10} more` : '';
+            throw new Error(
+              `no event '${asked}' is loaded. Available: ${keys.slice(0, 10).join(', ')}${more}`,
+            );
+          }
+        }
+        return h.eventDisplay.loadEvent(a.eventKey);
+      },
     },
 
     {
@@ -113,6 +135,10 @@ export function defaultCommands(): Command[] {
           (v: any) => v.name === a.view,
         );
         if (!match) throw new Error(`unknown view '${a.view}'`);
+        // Settle the camera first: a named view is only useful if auto-rotate
+        // is not still spinning the camera past it. Done only once the view is
+        // known valid, so a failed command never changes rotation state.
+        h.ui.setAutoRotate(false);
         h.ui.displayView(match);
       },
     },
@@ -183,11 +209,32 @@ export function defaultCommands(): Command[] {
       name: 'toggle-camera-projection',
       title: 'Camera projection',
       description:
-        'Switch the main camera between perspective and orthographic.',
+        'Switch the main camera between perspective and orthographic. Pass orthographic to ask for one in particular, or omit it to flip.',
       category: 'View',
-      inputSchema: { ...NO_ARGS },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          orthographic: {
+            type: 'boolean',
+            description:
+              'True for orthographic, false for perspective. Omit to flip whichever is current.',
+          },
+        },
+        additionalProperties: false,
+      },
       mutates: true,
-      run: (_a, h) => h.three.revertMainCamera(),
+      run: (a, h) => {
+        // With a target stated, this is idempotent: already being in the asked
+        // state is success, not a reason to flip out of it. A plain toggle
+        // meant that repeating a request undid it, which is wrong for a spoken
+        // instruction and worse for an agent retrying a tools/call.
+        if (typeof a.orthographic === 'boolean') {
+          if (h.three.isMainCameraOrthographic() === a.orthographic) {
+            return a.orthographic;
+          }
+        }
+        return h.three.revertMainCamera();
+      },
     },
 
     {
@@ -209,7 +256,27 @@ export function defaultCommands(): Command[] {
         additionalProperties: false,
       },
       mutates: true,
-      run: (a, h) => h.ui.geometryVisibility(a.part, a.visible),
+      run: (a, h) => {
+        // Reporting success for a part that is not in the scene is the worst
+        // outcome for a caller that cannot see the result: an agent, or a
+        // student who was told it worked. Refuse, and name what would have
+        // been accepted so the caller can correct itself.
+        const parts = h.listGeometryParts?.() ?? [];
+        let part = a.part;
+        if (parts.length) {
+          const match = parts.find(
+            (p) => p.toLowerCase() === String(part).toLowerCase(),
+          );
+          if (!match) {
+            throw new Error(
+              `no geometry part named '${part}'. Available: ${parts.join(', ')}`,
+            );
+          }
+          // Use the scene's own spelling, since the request may be spoken.
+          part = match;
+        }
+        return h.ui.geometryVisibility(part, a.visible);
+      },
     },
 
     {
@@ -236,6 +303,10 @@ export function defaultCommands(): Command[] {
       run: (a, h) => {
         const obj = h.resolveObject(a.collection, a.index);
         if (!obj) throw new Error(`no object at ${a.collection}[${a.index}]`);
+        // Stop auto-rotate so the focused object stays framed instead of the
+        // camera orbiting away from it. Only after the object is resolved, so a
+        // failed lookup leaves rotation untouched.
+        h.ui.setAutoRotate(false);
         h.eventDisplay.lookAtObject(obj.uuid);
       },
     },
