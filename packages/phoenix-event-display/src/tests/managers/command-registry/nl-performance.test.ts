@@ -136,7 +136,12 @@ const suggestions = () => {
  */
 const BUDGET = {
   commandBatch: 6,
-  warmQuestion: 10,
+  // Tighter than the rest on purpose. The real path measures about 1.6 (2 to
+  // 2.6 under coverage) and answering without the alias index about 15 (20 to
+  // 27 under coverage), but CI measured that slow path at only 9.9. At 10 the
+  // negative control fell just under the line on CI and failed to fire; 5
+  // keeps about 2x clear of both sides everywhere it has been measured.
+  warmQuestion: 5,
   questionBatch: 12,
   suggestions: 5,
   pathological: 18,
